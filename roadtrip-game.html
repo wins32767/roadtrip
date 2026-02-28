@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Road Trip — Photo Sorting Puzzle</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    font-family: 'Courier Prime', 'Courier New', monospace;
+  }
+  .container { max-width: 840px; margin: 0 auto; padding: 20px 16px; }
+
+  /* Menu */
+  .menu-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 48px; font-weight: 900;
+    background: linear-gradient(135deg, #e6b422, #f0d68a);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-align: center; margin-top: 30px;
+  }
+  .menu-sub { font-size: 13px; letter-spacing: 6px; color: rgba(255,255,255,0.35); text-align: center; text-transform: uppercase; margin-top: 8px; }
+  .menu-desc { max-width: 480px; margin: 20px auto 40px; font-size: 14px; color: rgba(255,255,255,0.5); line-height: 1.7; text-align: center; }
+  .route-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 14px; }
+  .route-btn {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 18px 20px; color: #fff; cursor: pointer;
+    text-align: left; font-family: 'Courier Prime', monospace;
+    display: flex; align-items: center; gap: 14px; transition: all 0.2s;
+  }
+  .route-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(230,180,34,0.35); }
+  .route-btn .rname { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; margin-bottom: 3px; }
+  .route-btn .rmeta { font-size: 11px; color: rgba(255,255,255,0.35); }
+
+  /* Play header */
+  .play-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .back-btn {
+    background: rgba(255,255,255,0.07); border: none; color: #fff;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 13px;
+  }
+  .play-title { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; color: #e6b422; }
+  .play-meta { font-size: 11px; color: rgba(255,255,255,0.35); }
+
+  /* Panels */
+  .panel {
+    background: rgba(255,255,255,0.025); border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.06); margin-bottom: 20px; overflow: hidden;
+  }
+  .panel-padded { padding: 14px; }
+  .panel-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 3px;
+    color: rgba(255,255,255,0.25); margin-bottom: 10px; text-align: center;
+  }
+
+  /* Slots */
+  .slots { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  .slot {
+    width: 140px; height: 108px;
+    border: 2px dashed rgba(255,255,255,0.1); border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; transition: border-color 0.15s, background 0.15s;
+    overflow: hidden;
+  }
+  .slot.filled { border-style: solid; border-color: rgba(230,180,34,0.5); padding: 0; }
+  .slot.filled img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; pointer-events: none; }
+  .slot.drop-target { border-color: #e6b422; background: rgba(230,180,34,0.04); }
+  .slot.selectable { border-color: rgba(230,180,34,0.45); border-style: dashed; }
+  .slot-num { font-size: 22px; font-weight: 700; color: rgba(255,255,255,0.15); }
+  .slot-label { font-size: 11px; color: rgba(255,255,255,0.15); }
+  .slot-remove { font-size: 9px; color: rgba(255,255,255,0.2); margin-top: 3px; text-align: center; }
+  .slot .result-badge {
+    position: absolute; top: -8px; right: -8px; width: 22px; height: 22px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+  }
+  .slot .result-badge.correct { background: #2d6a4f; }
+  .slot .result-badge.wrong { background: #c1121f; }
+
+  /* Cards */
+  .card-pool { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  .card {
+    width: 156px; height: 112px; border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; text-align: center; padding: 8px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2); cursor: grab; user-select: none;
+    position: relative; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .card.small { width: 120px; height: 86px; }
+  .card.selected { outline: 3px solid #e6b422; outline-offset: 3px; transform: scale(1.04); }
+  .card.dragging { transform: scale(1.08) rotate(-2deg); box-shadow: 0 14px 36px rgba(0,0,0,0.4); }
+  .card .card-name { font-size: 13px; line-height: 1.3; z-index: 1; }
+  .card.small .card-name { font-size: 11px; }
+  .card .card-clue { font-size: 11px; opacity: 0.65; margin-top: 3px; font-style: italic; font-weight: 400; z-index: 1; }
+  .card.small .card-clue { font-size: 9px; }
+  .card .card-stripe {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,0.025) 8px,rgba(255,255,255,0.025) 16px);
+    pointer-events: none;
+  }
+
+  /* Submit */
+  .submit-row { text-align: center; margin-top: 12px; }
+  .submit-btn {
+    border: none; padding: 12px 30px; border-radius: 10px;
+    font-size: 16px; font-weight: 700; font-family: 'Playfair Display', serif;
+    letter-spacing: 1px; transition: all 0.2s; cursor: pointer;
+  }
+  .submit-btn.active { background: #e6b422; color: #1a1a2e; }
+  .submit-btn.inactive { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.25); cursor: default; }
+
+  /* Results */
+  .results { text-align: center; }
+  .results-inner {
+    background: rgba(255,255,255,0.04); border-radius: 16px; padding: 24px;
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .results-score {
+    font-family: 'Playfair Display', serif; font-size: 34px; font-weight: 900; margin-bottom: 6px;
+  }
+  .results-msg { font-size: 14px; color: rgba(255,255,255,0.45); margin-bottom: 16px; }
+  .results-list {
+    text-align: left; background: rgba(0,0,0,0.15); border-radius: 8px; padding: 14px; margin-bottom: 16px;
+  }
+  .results-list-title { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: rgba(255,255,255,0.25); margin-bottom: 8px; }
+  .results-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+  .results-num {
+    width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.08);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+  }
+  .results-decoys { margin-top: 10px; font-size: 11px; color: rgba(255,255,255,0.25); }
+  .results-actions { display: flex; gap: 12px; justify-content: center; }
+  .btn-retry { background: #e6b422; border: none; color: #1a1a2e; padding: 10px 22px; border-radius: 8px; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 14px; }
+  .btn-menu { background: rgba(255,255,255,0.08); border: none; color: #fff; padding: 10px 22px; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 14px; }
+
+  /* Reveal photo grid */
+  .reveal-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 16px 0; }
+  .reveal-card {
+    position: relative; width: 148px; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .reveal-card img { width: 100%; height: 110px; object-fit: cover; display: block; }
+  .reveal-card .reveal-overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 6px 8px;
+    pointer-events: none;
+  }
+  .reveal-card.correct .reveal-overlay { background: linear-gradient(180deg, rgba(45,106,79,0.35) 0%, rgba(45,106,79,0.75) 100%); }
+  .reveal-card.wrong   .reveal-overlay { background: linear-gradient(180deg, rgba(193,18,31,0.35) 0%, rgba(193,18,31,0.75) 100%); }
+  .reveal-card .reveal-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .reveal-card .reveal-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+    background: rgba(0,0,0,0.55);
+  }
+  .reveal-card .reveal-check {
+    font-size: 16px; font-weight: 900;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+  }
+  .reveal-card.correct .reveal-check { color: #6bcb77; }
+  .reveal-card.wrong   .reveal-check { color: #ff6b6b; }
+  .reveal-card .reveal-bottom { }
+  .reveal-card .reveal-name {
+    font-size: 11px; font-weight: 700; color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    line-height: 1.3; margin-bottom: 2px;
+  }
+  .reveal-card .reveal-guess {
+    font-size: 9px; color: rgba(255,255,255,0.6);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+    font-style: italic;
+  }
+  .reveal-decoys { margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.3); text-align: center; }
+
+  /* Leaflet overrides for dark theme */
+  #leaflet-map { width: 100%; height: 380px; border-radius: 12px; background: #1a1a2e; }
+  .leaflet-tile-pane { filter: saturate(0.3) brightness(0.6); }
+
+  /* Scores */
+  .scores-panel {
+    margin-top: 36px; padding: 14px 22px; background: rgba(255,255,255,0.03);
+    border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); max-width: 380px; width: 100%;
+  }
+  .scores-title { font-size: 11px; text-transform: uppercase; letter-spacing: 3px; color: rgba(255,255,255,0.3); margin-bottom: 10px; }
+  .scores-row { display: flex; justify-content: space-between; font-size: 13px; color: rgba(255,255,255,0.55); padding: 3px 0; }
+</style>
+</head>
+<body>
+
+<div class="container" id="app"></div>
+
+<script>
+// Photo URLs use Unsplash (hotlink-friendly, no API key needed for basic use)
+// Format: https://images.unsplash.com/photo-{ID}?w=400&h=280&fit=crop&q=80
+const ROUTES = [
+  {
+    name: "Pacific Coast Highway", region: "US West Coast",
+    stops: [
+      { name: "San Francisco, CA", lat: 37.77, lng: -122.42, photo: "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=400&h=280&fit=crop&q=80" },
+      { name: "Big Sur, CA",       lat: 36.27, lng: -121.81, photo: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=280&fit=crop&q=80" },
+      { name: "San Luis Obispo, CA", lat: 35.28, lng: -120.66, photo: "https://images.unsplash.com/photo-1571036503985-7e3b049a9f50?w=400&h=280&fit=crop&q=80" },
+      { name: "Santa Barbara, CA", lat: 34.42, lng: -119.70, photo: "https://images.unsplash.com/photo-1530639834082-05bafb67fbbe?w=400&h=280&fit=crop&q=80" },
+      { name: "Los Angeles, CA",   lat: 34.05, lng: -118.24, photo: "https://images.unsplash.com/photo-1534190760961-74e8c1c5c3da?w=400&h=280&fit=crop&q=80" },
+    ],
+    travelTimes: ["2h 45m", "1h 30m", "1h 15m", "1h 40m"],
+    decoys: [
+      { name: "Phoenix, AZ",  photo: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=280&fit=crop&q=80" },
+      { name: "Portland, OR", photo: "https://images.unsplash.com/photo-1575916015774-26e18f7a81f3?w=400&h=280&fit=crop&q=80" },
+      { name: "Las Vegas, NV",photo: "https://images.unsplash.com/photo-1581351721010-8cf859cb14a4?w=400&h=280&fit=crop&q=80" },
+    ],
+  },
+  {
+    name: "New England Fall Tour", region: "US Northeast",
+    stops: [
+      { name: "Boston, MA",       lat: 42.36, lng: -71.06, photo: "https://images.unsplash.com/photo-1509200655571-745ba1b87907?w=400&h=280&fit=crop&q=80" },
+      { name: "Portsmouth, NH",   lat: 43.07, lng: -70.76, photo: "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=400&h=280&fit=crop&q=80" },
+      { name: "Portland, ME",     lat: 43.66, lng: -70.26, photo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=280&fit=crop&q=80" },
+      { name: "North Conway, NH", lat: 44.05, lng: -71.13, photo: "https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=400&h=280&fit=crop&q=80" },
+      { name: "Burlington, VT",   lat: 44.48, lng: -73.21, photo: "https://images.unsplash.com/photo-1572276596237-5db2c3e16c5d?w=400&h=280&fit=crop&q=80" },
+    ],
+    travelTimes: ["1h 00m", "1h 45m", "2h 15m", "2h 30m"],
+    decoys: [
+      { name: "New York, NY",  photo: "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&h=280&fit=crop&q=80" },
+      { name: "Hartford, CT",  photo: "https://images.unsplash.com/photo-1543872084-c7bd3822856f?w=400&h=280&fit=crop&q=80" },
+      { name: "Albany, NY",    photo: "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=400&h=280&fit=crop&q=80" },
+    ],
+  },
+  {
+    name: "Route 66 Classic", region: "US Heartland",
+    stops: [
+      { name: "Chicago, IL",       lat: 41.88, lng: -87.63, photo: "https://images.unsplash.com/photo-1494522855154-9297ac14b55f?w=400&h=280&fit=crop&q=80" },
+      { name: "St. Louis, MO",     lat: 38.63, lng: -90.20, photo: "https://images.unsplash.com/photo-1605371924599-2d0365da1ae0?w=400&h=280&fit=crop&q=80" },
+      { name: "Oklahoma City, OK", lat: 35.47, lng: -97.52, photo: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=280&fit=crop&q=80" },
+      { name: "Amarillo, TX",      lat: 35.22, lng: -101.83, photo: "https://images.unsplash.com/photo-1565534086657-4b8a4049bdbf?w=400&h=280&fit=crop&q=80" },
+      { name: "Santa Fe, NM",      lat: 35.69, lng: -105.94, photo: "https://images.unsplash.com/photo-1605371924599-2d0365da1ae0?w=400&h=280&fit=crop&q=80" },
+    ],
+    travelTimes: ["4h 30m", "4h 15m", "4h 00m", "4h 15m"],
+    decoys: [
+      { name: "Denver, CO",    photo: "https://images.unsplash.com/photo-1546156929-a4c0ac411f47?w=400&h=280&fit=crop&q=80" },
+      { name: "Dallas, TX",    photo: "https://images.unsplash.com/photo-1531218150217-54595bc2b934?w=400&h=280&fit=crop&q=80" },
+      { name: "Nashville, TN", photo: "https://images.unsplash.com/photo-1545853332-6f63e22a4d6a?w=400&h=280&fit=crop&q=80" },
+    ],
+  },
+  {
+    name: "Great Lakes Adventure", region: "US Midwest",
+    stops: [
+      { name: "Milwaukee, WI",      lat: 43.04, lng: -87.91, photo: "https://images.unsplash.com/photo-1575916015774-26e18f7a81f3?w=400&h=280&fit=crop&q=80" },
+      { name: "Traverse City, MI",  lat: 44.76, lng: -85.62, photo: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&h=280&fit=crop&q=80" },
+      { name: "Mackinac Island, MI",lat: 45.85, lng: -84.62, photo: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=280&fit=crop&q=80" },
+      { name: "Duluth, MN",         lat: 46.79, lng: -92.10, photo: "https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=400&h=280&fit=crop&q=80" },
+    ],
+    travelTimes: ["4h 30m", "1h 45m", "6h 30m"],
+    decoys: [
+      { name: "Indianapolis, IN", photo: "https://images.unsplash.com/photo-1594008899453-9f0d58e37498?w=400&h=280&fit=crop&q=80" },
+      { name: "Minneapolis, MN",  photo: "https://images.unsplash.com/photo-1568454537842-d933259bb258?w=400&h=280&fit=crop&q=80" },
+      { name: "Detroit, MI",      photo: "https://images.unsplash.com/photo-1531218150217-54595bc2b934?w=400&h=280&fit=crop&q=80" },
+    ],
+  },
+  {
+    name: "Canadian Rockies", region: "Western Canada",
+    stops: [
+      { name: "Calgary, AB",    lat: 51.05, lng: -114.07, photo: "https://images.unsplash.com/photo-1527549993586-dff825b37782?w=400&h=280&fit=crop&q=80" },
+      { name: "Banff, AB",      lat: 51.18, lng: -115.57, photo: "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=400&h=280&fit=crop&q=80" },
+      { name: "Lake Louise, AB",lat: 51.42, lng: -116.18, photo: "https://images.unsplash.com/photo-1453825096734-c654c0916695?w=400&h=280&fit=crop&q=80" },
+      { name: "Jasper, AB",     lat: 52.87, lng: -118.08, photo: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400&h=280&fit=crop&q=80" },
+      { name: "Kamloops, BC",   lat: 50.67, lng: -120.33, photo: "https://images.unsplash.com/photo-1470770903676-69b98201ea1c?w=400&h=280&fit=crop&q=80" },
+    ],
+    travelTimes: ["1h 30m", "0h 40m", "3h 00m", "3h 30m"],
+    decoys: [
+      { name: "Vancouver, BC", photo: "https://images.unsplash.com/photo-1559511260-66a654ae982a?w=400&h=280&fit=crop&q=80" },
+      { name: "Edmonton, AB",  photo: "https://images.unsplash.com/photo-1532635241-17e820acc59f?w=400&h=280&fit=crop&q=80" },
+      { name: "Kelowna, BC",   photo: "https://images.unsplash.com/photo-1502472584811-0a2f2feb8968?w=400&h=280&fit=crop&q=80" },
+    ],
+  },
+  {
+    name: "Deep South Road Trip", region: "US South",
+    stops: [
+      { name: "Nashville, TN",  lat: 36.16, lng: -86.78, photo: "https://images.unsplash.com/photo-1545853332-6f63e22a4d6a?w=400&h=280&fit=crop&q=80" },
+      { name: "Memphis, TN",    lat: 35.15, lng: -90.05, photo: "https://images.unsplash.com/photo-1523217009564-30e9f9d9f3b2?w=400&h=280&fit=crop&q=80" },
+      { name: "Jackson, MS",    lat: 32.30, lng: -90.18, photo: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=280&fit=crop&q=80" },
+      { name: "New Orleans, LA",lat: 29.95, lng: -90.07, photo: "https://images.unsplash.com/photo-1568872040439-4b8dadc4f533?w=400&h=280&fit=crop&q=80" },
+    ],
+    travelTimes: ["3h 15m", "2h 45m", "2h 45m"],
+    decoys: [
+      { name: "Atlanta, GA",     photo: "https://images.unsplash.com/photo-1575917649705-5b59aaa12e6b?w=400&h=280&fit=crop&q=80" },
+      { name: "Birmingham, AL",  photo: "https://images.unsplash.com/photo-1494522855154-9297ac14b55f?w=400&h=280&fit=crop&q=80" },
+      { name: "Baton Rouge, LA", photo: "https://images.unsplash.com/photo-1543872084-c7bd3822856f?w=400&h=280&fit=crop&q=80" },
+    ],
+  },
+];
+
+// ── State ──
+let screen = "menu";
+let currentRoute = null;
+let cards = [];
+let assignments = {};
+let revealed = false;
+let score = null;
+let selectedCard = null;
+let dragItem = null;
+let dragOverSlot = null;
+let history = [];
+let leafletMap = null;
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function locationToHue(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  return h;
+}
+
+function startGame(r) {
+  currentRoute = r;
+  cards = shuffle([
+    ...r.stops.map(s => ({ ...s, isDecoy: false })),
+    ...r.decoys.map(d => ({ ...d, isDecoy: true, lat: 0, lng: 0 })),
+  ]);
+  assignments = {};
+  revealed = false;
+  score = null;
+  selectedCard = null;
+  dragItem = null;
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  screen = "play";
+  render();
+}
+
+function goMenu() {
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  screen = "menu";
+  render();
+}
+
+function handleSlotAction(slotIndex) {
+  if (revealed) return;
+  const item = dragItem || selectedCard;
+  if (item) {
+    Object.keys(assignments).forEach(k => { if (assignments[k]?.name === item.name) delete assignments[k]; });
+    assignments[slotIndex] = item;
+    dragItem = null; dragOverSlot = null; selectedCard = null;
+  } else if (assignments[slotIndex]) {
+    delete assignments[slotIndex];
+  }
+  render();
+}
+
+function selectCard(card) {
+  selectedCard = (selectedCard?.name === card.name) ? null : card;
+  render();
+}
+
+function checkAnswers() {
+  let correct = 0;
+  currentRoute.stops.forEach((stop, i) => { if (assignments[i]?.name === stop.name) correct++; });
+  score = correct;
+  revealed = true;
+  history.push({ route: currentRoute.name, score: correct, total: currentRoute.stops.length });
+  render();
+  // Init leaflet after DOM is updated
+  setTimeout(initLeafletMap, 50);
+}
+
+function initLeafletMap() {
+  const el = document.getElementById("leaflet-map");
+  if (!el || !window.L) return;
+
+  const L = window.L;
+  const map = L.map(el, {
+    zoomControl: true,
+    attributionControl: true,
+    dragging: true,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    touchZoom: true,
+  });
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  const bounds = L.latLngBounds(currentRoute.stops.map(s => [s.lat, s.lng]));
+  map.fitBounds(bounds.pad(0.25));
+
+  L.polyline(currentRoute.stops.map(s => [s.lat, s.lng]), {
+    color: "#e6b422", weight: 4, opacity: 0.85, dashArray: "10 6",
+  }).addTo(map);
+
+  currentRoute.stops.forEach((stop, i) => {
+    const assigned = assignments[i];
+    const correct = assigned?.name === stop.name;
+    const bg = correct ? "#1b4332" : "#641220";
+    const border = correct ? "#2d6a4f" : "#c1121f";
+    const symbol = correct ? "✓" : "✗";
+    const nameColor = correct ? "#4ade80" : "#f87171";
+
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="width:30px;height:30px;border-radius:50%;background:${bg};border:2.5px solid ${border};display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:700;font-family:'Courier Prime',monospace;box-shadow:0 2px 8px rgba(0,0,0,0.5);">${symbol}</div>
+        <div style="margin-top:3px;font-family:'Courier Prime',monospace;font-size:11px;font-weight:700;color:${nameColor};text-shadow:0 1px 3px rgba(0,0,0,0.9);white-space:nowrap;">${stop.name}</div>
+      </div>`,
+      iconSize: [140, 52],
+      iconAnchor: [70, 15],
+    });
+
+    L.marker([stop.lat, stop.lng], { icon, interactive: false }).addTo(map);
+  });
+
+  leafletMap = map;
+  setTimeout(() => map.invalidateSize(), 200);
+}
+
+// ── Canvas Route Drawing ──
+function drawRouteCanvas() {
+  const canvas = document.getElementById("route-canvas");
+  if (!canvas) return;
+  const W = 600, H = 320, padding = 48;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = "100%";
+  canvas.style.maxWidth = W + "px";
+  canvas.style.height = "auto";
+  canvas.style.aspectRatio = W + " / " + H;
+  canvas.style.display = "block";
+  canvas.style.margin = "0 auto";
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+
+  const stops = currentRoute.stops;
+  const lats = stops.map(s => s.lat), lngs = stops.map(s => s.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const midLat = (minLat + maxLat) / 2;
+  const cosLat = Math.cos(midLat * Math.PI / 180);
+  const lngRange = maxLng - minLng || 1, latRange = maxLat - minLat || 1;
+  const usableW = W - padding * 2, usableH = H - padding * 2;
+  const geoAspect = (lngRange * cosLat) / latRange;
+  const boxAspect = usableW / usableH;
+  const scale = geoAspect > boxAspect ? usableW / (lngRange * cosLat) : usableH / latRange;
+  const cx = (minLng + maxLng) / 2, cy = (minLat + maxLat) / 2;
+
+  const pts = stops.map(s => ({
+    x: W / 2 + (s.lng - cx) * cosLat * scale,
+    y: H / 2 - (s.lat - cy) * scale,
+  }));
+
+  // Nudge overlapping
+  const minDist = 46;
+  for (let pass = 0; pass < 6; pass++) {
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[j].x - pts[i].x, dy = pts[j].y - pts[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDist && dist > 0.1) {
+          const push = (minDist - dist) / 2;
+          const nx = dx / dist, ny = dy / dist;
+          pts[i].x -= nx * push; pts[i].y -= ny * push;
+          pts[j].x += nx * push; pts[j].y += ny * push;
+        }
+      }
+    }
+  }
+
+  // Dark bg
+  ctx.fillStyle = "#141b2d";
+  ctx.fillRect(0, 0, W, H);
+
+  // Dots
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  for (let x = 10; x < W; x += 20) for (let y = 10; y < H; y += 20) {
+    ctx.beginPath(); ctx.arc(x, y, 0.8, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Glow
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = "rgba(230,180,34,0.12)"; ctx.lineWidth = 16;
+  ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.stroke();
+
+  // Dashed route
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.strokeStyle = "rgba(230,180,34,0.5)"; ctx.lineWidth = 2.5;
+  ctx.setLineDash([8, 5]); ctx.stroke(); ctx.setLineDash([]);
+
+  // Travel times
+  ctx.font = "10px 'Courier Prime', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  currentRoute.travelTimes.forEach((t, i) => {
+    if (i >= pts.length - 1) return;
+    const mx = (pts[i].x + pts[i+1].x) / 2, my = (pts[i].y + pts[i+1].y) / 2;
+    const dx = pts[i+1].x - pts[i].x, dy = pts[i+1].y - pts[i].y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    ctx.fillText(t, mx + (-dy/len*18), my + (dx/len*18));
+  });
+
+  // Nodes — draw circles; if assigned, draw photo clipped to circle
+  // We collect async image draws and redraw after they load
+  const nodeR = 22;
+  pts.forEach((p, i) => {
+    const assigned = assignments[i];
+    const empty = !assigned;
+
+    // Circle background
+    ctx.beginPath(); ctx.arc(p.x, p.y, nodeR, 0, Math.PI * 2);
+    ctx.fillStyle = empty ? "rgba(255,255,255,0.06)" : "rgba(230,180,34,0.15)";
+    ctx.fill();
+    ctx.strokeStyle = empty ? "rgba(255,255,255,0.25)" : "rgba(230,180,34,0.75)";
+    ctx.lineWidth = empty ? 1.5 : 2.5;
+    if (empty) ctx.setLineDash([4, 3]);
+    ctx.stroke(); ctx.setLineDash([]);
+
+    if (empty) {
+      // Just show the stop number
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = "bold 13px 'Courier Prime', monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), p.x, p.y);
+    } else {
+      // Draw photo clipped to circle
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, nodeR - 2, 0, Math.PI * 2);
+        ctx.clip();
+        const d = (nodeR - 2) * 2;
+        ctx.drawImage(img, p.x - (nodeR - 2), p.y - (nodeR - 2), d, d);
+        ctx.restore();
+        // Redraw gold ring on top of photo
+        ctx.beginPath(); ctx.arc(p.x, p.y, nodeR, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(230,180,34,0.85)";
+        ctx.lineWidth = 2.5; ctx.stroke();
+      };
+      img.src = assigned.photo;
+      // Fallback number until image loads
+      ctx.fillStyle = "rgba(255,255,255,0.3)";
+      ctx.font = "bold 11px 'Courier Prime', monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), p.x, p.y);
+    }
+  });
+
+  ctx.font = "bold 10px 'Courier Prime', monospace";
+  ctx.fillStyle = "rgba(230,180,34,0.65)"; ctx.textAlign = "center";
+  ctx.fillText("START", pts[0].x, pts[0].y - 26);
+  ctx.fillText("END", pts[pts.length-1].x, pts[pts.length-1].y - 26);
+}
+
+// ── Card HTML ──
+function cardHTML(card, small, isSelected) {
+  const cls = ["card", "photo-card"];
+  if (small) cls.push("small");
+  if (isSelected) cls.push("selected");
+  const w = small ? 120 : 156;
+  const h = small ? 86 : 112;
+  return `<div class="${cls.join(" ")}" style="width:${w}px;height:${h}px;background:#111;padding:0;" data-name="${card.name}">
+    <img src="${card.photo}" alt=""
+      style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block;pointer-events:none;"
+      onerror="this.parentElement.style.background='#2a2a3e';this.style.display='none';" />
+  </div>`;
+}
+
+// ── Render ──
+function render() {
+  const app = document.getElementById("app");
+  const assignedNames = new Set(Object.values(assignments).map(a => a?.name));
+  const unassigned = cards.filter(c => !assignedNames.has(c.name));
+  const allSlotsFilled = currentRoute && Object.keys(assignments).length === currentRoute.stops.length;
+
+  if (screen === "menu") {
+    let scoresHTML = "";
+    if (history.length > 0) {
+      scoresHTML = `<div class="scores-panel" style="margin:36px auto 0;">
+        <div class="scores-title">Recent Scores</div>
+        ${history.slice(-5).reverse().map(h => `
+          <div class="scores-row">
+            <span>${h.route}</span>
+            <span style="color:${h.score===h.total?"#6bcb77":"#e6b422"};font-weight:700">${h.score}/${h.total}</span>
+          </div>
+        `).join("")}
+      </div>`;
+    }
+
+    app.innerHTML = `
+      <h1 class="menu-title">ROAD TRIP</h1>
+      <div class="menu-sub">Photo Sorting Puzzle</div>
+      <p class="menu-desc">Each route shows real distances and directions between stops — but no map underneath. Use the shape, travel times, and clues to sort locations. Watch out for decoys. After you submit, the real map is revealed.</p>
+      <div class="route-grid">
+        ${ROUTES.map((r, i) => {
+          const lats = r.stops.map(s=>s.lat), lngs = r.stops.map(s=>s.lng);
+          const minLat=Math.min(...lats), maxLat=Math.max(...lats), minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
+          const cosLat=Math.cos(((minLat+maxLat)/2*Math.PI)/180);
+          const latR=maxLat-minLat||1, lngR=maxLng-minLng||1;
+          const sc=Math.min(56/(lngR*cosLat),36/latR);
+          const cx2=(minLng+maxLng)/2, cy2=(minLat+maxLat)/2;
+          const pts=r.stops.map(s=>({x:36+(s.lng-cx2)*cosLat*sc,y:24-(s.lat-cy2)*sc}));
+          const d=pts.map((p,j)=>`${j===0?"M":"L"}${p.x} ${p.y}`).join(" ");
+          return `<button class="route-btn" data-route="${i}">
+            <svg width="72" height="48" viewBox="0 0 72 48" style="flex-shrink:0">
+              <path d="${d}" fill="none" stroke="rgba(230,180,34,0.5)" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 3"/>
+              ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="3" fill="rgba(230,180,34,0.6)"/>`).join("")}
+            </svg>
+            <div><div class="rname">${r.name}</div><div class="rmeta">${r.region} · ${r.stops.length} stops · ${r.decoys.length} decoys</div></div>
+          </button>`;
+        }).join("")}
+      </div>
+      ${scoresHTML}
+    `;
+
+    document.querySelectorAll(".route-btn").forEach(btn => {
+      btn.addEventListener("click", () => startGame(ROUTES[parseInt(btn.dataset.route)]));
+    });
+    return;
+  }
+
+  // Play screen
+  let mapHTML;
+  if (revealed) {
+    mapHTML = `<div id="leaflet-map"></div>`;
+  } else {
+    mapHTML = `<div style="padding:12px 8px"><canvas id="route-canvas"></canvas></div>`;
+  }
+
+  let slotsHTML = "";
+  if (!revealed) {
+    slotsHTML = `<div class="panel panel-padded">
+      <div class="panel-label">Drag or tap cards into slots</div>
+      <div class="slots">
+        ${currentRoute.stops.map((_, i) => {
+          const a = assignments[i];
+          const cls = ["slot"];
+          if (a) cls.push("filled");
+          if (dragOverSlot === i) cls.push("drop-target");
+          if (selectedCard && !a) cls.push("selectable");
+          return `<div class="${cls.join(" ")}" data-slot="${i}">
+            ${a ? `<img src="${a.photo}" alt="" onerror="this.style.display='none'"/><div class="slot-remove" style="position:absolute;bottom:2px;left:0;right:0;text-align:center;background:rgba(0,0,0,0.4);border-radius:0 0 8px 8px;">tap to remove</div>` :
+              `<div class="slot-num">${i+1}</div><div class="slot-label">Stop ${i+1}</div>`}
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+  }
+
+  let poolHTML = "";
+  if (!revealed) {
+    poolHTML = `<div class="panel panel-padded">
+      <div class="panel-label">Available (${unassigned.length})${selectedCard ? ` <span style="color:#e6b422">Photo selected → tap a slot</span>` : ""}</div>
+      <div class="card-pool">
+        ${unassigned.map(c => `<div class="pool-card" data-name="${c.name}">${cardHTML(c, false, selectedCard?.name === c.name)}</div>`).join("")}
+      </div>
+    </div>`;
+  }
+
+  let resultsHTML = "";
+  if (revealed) {
+    resultsHTML = `<div class="results" style="max-width:820px;margin:0 auto 20px;">
+      <div class="results-inner">
+        <div class="results-score" style="color:${score===currentRoute.stops.length?"#6bcb77":"#e6b422"}">${score}/${currentRoute.stops.length} Correct</div>
+        <div class="results-msg">${score===currentRoute.stops.length?"Perfect run.":score>=currentRoute.stops.length/2?"Decent navigation.":"Took a few wrong turns."}</div>
+        <div class="reveal-grid">
+          ${currentRoute.stops.map((s, i) => {
+            const correct = assignments[i]?.name === s.name;
+            const guessed = assignments[i];
+            const cls = correct ? "correct" : "wrong";
+            const icon = correct ? "✓" : "✗";
+            const guessTxt = (!correct && guessed) ? `you: ${guessed.name}` : (!correct && !guessed) ? "no answer" : "";
+            return `<div class="reveal-card ${cls}">
+              <img src="${s.photo}" alt="" onerror="this.style.background='#2a2a3e';this.style.height='110px';" />
+              <div class="reveal-overlay">
+                <div class="reveal-top">
+                  <div class="reveal-num">${i+1}</div>
+                  <div class="reveal-check">${icon}</div>
+                </div>
+                <div class="reveal-bottom">
+                  <div class="reveal-name">${s.name}</div>
+                  ${guessTxt ? `<div class="reveal-guess">${guessTxt}</div>` : ""}
+                </div>
+              </div>
+            </div>`;
+          }).join("")}
+        </div>
+        <div class="reveal-decoys">Decoys: ${currentRoute.decoys.map(d=>d.name).join(", ")}</div>
+        <div class="results-actions" style="margin-top:16px;">
+          <button class="btn-retry" id="btn-retry">Retry</button>
+          <button class="btn-menu" id="btn-menu">All Routes</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  let submitHTML = "";
+  if (!revealed) {
+    submitHTML = `<div class="submit-row">
+      <button class="submit-btn ${allSlotsFilled ? "active" : "inactive"}" id="btn-submit" ${allSlotsFilled ? "" : "disabled"}>
+        ${allSlotsFilled ? "Check My Route" : `Fill all ${currentRoute.stops.length} stops`}
+      </button>
+    </div>`;
+  }
+
+  app.innerHTML = `
+    <div class="play-header">
+      <button class="back-btn" id="btn-back">← Routes</button>
+      <div class="play-title">${currentRoute.name}</div>
+      <div class="play-meta">${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</div>
+    </div>
+    <div class="panel">${mapHTML}</div>
+    ${slotsHTML}
+    ${poolHTML}
+    ${resultsHTML}
+    ${submitHTML}
+  `;
+
+  // Event listeners
+  document.getElementById("btn-back")?.addEventListener("click", goMenu);
+  document.getElementById("btn-submit")?.addEventListener("click", () => { if (allSlotsFilled) checkAnswers(); });
+  document.getElementById("btn-retry")?.addEventListener("click", () => startGame(currentRoute));
+  document.getElementById("btn-menu")?.addEventListener("click", goMenu);
+
+  document.querySelectorAll(".slot").forEach(el => {
+    el.addEventListener("click", () => handleSlotAction(parseInt(el.dataset.slot)));
+    el.addEventListener("dragover", e => { e.preventDefault(); dragOverSlot = parseInt(el.dataset.slot); });
+    el.addEventListener("dragleave", () => { dragOverSlot = null; });
+    el.addEventListener("drop", e => { e.preventDefault(); handleSlotAction(parseInt(el.dataset.slot)); });
+  });
+
+  document.querySelectorAll(".pool-card").forEach(el => {
+    const name = el.dataset.name;
+    const card = cards.find(c => c.name === name);
+    if (!card) return;
+    el.addEventListener("click", () => selectCard(card));
+    el.setAttribute("draggable", "true");
+    el.addEventListener("dragstart", () => { dragItem = card; });
+    el.addEventListener("dragend", () => { dragItem = null; dragOverSlot = null; });
+  });
+
+  // Draw canvas or init leaflet
+  if (!revealed) {
+    requestAnimationFrame(drawRouteCanvas);
+  }
+}
+
+// Boot
+render();
+</script>
+</body>
+</html>
