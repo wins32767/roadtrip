@@ -1,0 +1,127 @@
+route_name,stop_order,location
+Transatlantic Budget Hop,1,New York
+Transatlantic Budget Hop,2,Boston
+Transatlantic Budget Hop,3,Reykjavik
+Transatlantic Budget Hop,4,London
+Transatlantic Budget Hop,5,Liverpool
+Transatlantic Budget Hop,6,Dublin
+Mediterranean Circuit,1,Barcelona
+Mediterranean Circuit,2,Rome
+Mediterranean Circuit,3,Venice
+Mediterranean Circuit,4,Dubrovnik
+Mediterranean Circuit,5,Athens
+Mediterranean Circuit,6,Istanbul
+Iberia to Morocco,1,Barcelona
+Iberia to Morocco,2,Madrid
+Iberia to Morocco,3,Lisbon
+Iberia to Morocco,4,Marrakech
+Iberia to Morocco,5,Fez
+Iberia to Morocco,6,Sahara Dunes (Erg Chebbi)
+Eastern Mediterranean Arc,1,Cairo
+Eastern Mediterranean Arc,2,Alexandria
+Eastern Mediterranean Arc,3,Jerusalem
+Eastern Mediterranean Arc,4,Petra
+Eastern Mediterranean Arc,5,Cappadocia
+Eastern Mediterranean Arc,6,Istanbul
+Empires of Sand and Stone,1,Dubai
+Empires of Sand and Stone,2,Abu Dhabi
+Empires of Sand and Stone,3,Muscat
+Empires of Sand and Stone,4,Delhi
+Empires of Sand and Stone,5,Jaipur
+Empires of Sand and Stone,6,Agra
+Eastward Silk Road Evolution,1,Kathmandu
+Eastward Silk Road Evolution,2,Chengdu
+Eastward Silk Road Evolution,3,Xi'an
+Eastward Silk Road Evolution,4,Beijing
+Eastward Silk Road Evolution,5,Shanghai
+Eastward Silk Road Evolution,6,Hong Kong
+North Pacific Crossing,1,Seoul
+North Pacific Crossing,2,Tokyo
+North Pacific Crossing,3,Kyoto
+North Pacific Crossing,4,Anchorage
+North Pacific Crossing,5,Vancouver
+North Pacific Crossing,6,Seattle
+Cross-Country Amtrak (California Zephyr + East),1,San Francisco
+Cross-Country Amtrak (California Zephyr + East),2,Denver
+Cross-Country Amtrak (California Zephyr + East),3,Chicago
+Cross-Country Amtrak (California Zephyr + East),4,"Washington, D.C."
+Cross-Country Amtrak (California Zephyr + East),5,Philadelphia
+Cross-Country Amtrak (California Zephyr + East),6,New York City
+West Coast USA Spike,1,"Seattle, USA"
+West Coast USA Spike,2,"Cannon Beach, USA"
+West Coast USA Spike,3,"San Francisco, USA"
+West Coast USA Spike,4,"Yosemite National Park, USA"
+West Coast USA Spike,5,"Big Sur, USA"
+West Coast USA Spike,6,"Los Angeles, USA"
+Mexico to Cartagena Spike,1,"Mexico City, Mexico"
+Mexico to Cartagena Spike,2,"Canc\'fan, Mexico"
+Mexico to Cartagena Spike,3,"Tikal, Guatemala"
+Mexico to Cartagena Spike,4,"La Fortuna (Arenal Volcano), Costa Rica"
+Mexico to Cartagena Spike,5,"Panama City, Panama"
+Mexico to Cartagena Spike,6,"Cartagena, Colombia"
+Northern Andes Spike,1,"Bogot\'e1, Colombia"
+Northern Andes Spike,2,"Quito, Ecuador"
+Northern Andes Spike,3,"Lima, Peru"
+Northern Andes Spike,4,"Machu Picchu, Peru"
+Northern Andes Spike,5,"Lake Titicaca, Peru/Bolivia"
+Northern Andes Spike,6,"Salar de Uyuni, Bolivia"
+Rio to Patagonia Spike,1,"Rio de Janeiro, Brazil"
+Rio to Patagonia Spike,2,"Iguazu Falls, Argentina/Brazil"
+Rio to Patagonia Spike,3,"Buenos Aires, Argentina"
+Rio to Patagonia Spike,4,"El Calafate, Argentina"
+Rio to Patagonia Spike,5,Patagonia (Chile/Argentina)
+Rio to Patagonia Spike,6,"Ushuaia, Argentina"
+Midnight Sun to Red Square,1,"Oslo, Norway"
+Midnight Sun to Red Square,2,"Stockholm, Sweden"
+Midnight Sun to Red Square,3,"Tallinn, Estonia"
+Midnight Sun to Red Square,4,"St. Petersburg, Russia"
+Midnight Sun to Red Square,5,"Moscow, Russia"
+Midnight Sun to Red Square,6,"Budapest, Hungary"
+Channel to the Alps,1,"London, United Kingdom"
+Channel to the Alps,2,"Amsterdam, Netherlands"
+Channel to the Alps,3,"Paris, France"
+Channel to the Alps,4,"Geneva, Switzerland"
+Channel to the Alps,5,"Interlaken, Switzerland"
+Channel to the Alps,6,"Milan, Italy"
+Castles to the Adriatic,1,"Berlin, Germany"
+Castles to the Adriatic,2,"Heidelberg, Germany"
+Castles to the Adriatic,3,"Neuschwanstein Castle, Germany"
+Castles to the Adriatic,4,"Salzburg, Austria"
+Castles to the Adriatic,5,"Ljubljana, Slovenia"
+Castles to the Adriatic,6,"Split, Croatia"
+West Africa Atlantic Spine,1,"Dakar, Senegal"
+West Africa Atlantic Spine,2,"Banjul, The Gambia"
+West Africa Atlantic Spine,3,"Freetown, Sierra Leone"
+West Africa Atlantic Spine,4,"Abidjan, Cote d'Ivoire"
+West Africa Atlantic Spine,5,"Accra, Ghana"
+West Africa Atlantic Spine,6,"Lagos, Nigeria"
+East Africa Safari Descent,1,"Nairobi, Kenya"
+East Africa Safari Descent,2,"Masai Mara, Kenya"
+East Africa Safari Descent,3,"Serengeti National Park, Tanzania"
+East Africa Safari Descent,4,"Mount Kilimanjaro, Tanzania"
+East Africa Safari Descent,5,"Zanzibar, Tanzania"
+East Africa Safari Descent,6,"Victoria Falls, Zambia/Zimbabwe"
+Southern Africa Overland,1,"Victoria Falls, Zambia/Zimbabwe"
+Southern Africa Overland,2,"Windhoek, Namibia"
+Southern Africa Overland,3,"Namib Desert, Namibia"
+Southern Africa Overland,4,"Gaborone, Botswana"
+Southern Africa Overland,5,"Johannesburg, South Africa"
+Southern Africa Overland,6,"Cape Town, South Africa"
+Mainland Southeast Asia Descent,1,"Hanoi, Vietnam"
+Mainland Southeast Asia Descent,2,"Ho Chi Minh City, Vietnam"
+Mainland Southeast Asia Descent,3,"Siem Reap, Cambodia"
+Mainland Southeast Asia Descent,4,"Bangkok, Thailand"
+Mainland Southeast Asia Descent,5,"Kuala Lumpur, Malaysia"
+Mainland Southeast Asia Descent,6,Singapore
+Equator to Dragons (Singapore to Indonesia),1,Singapore
+Equator to Dragons (Singapore to Indonesia),2,"Yogyakarta, Indonesia"
+Equator to Dragons (Singapore to Indonesia),3,"Mount Bromo, Indonesia"
+Equator to Dragons (Singapore to Indonesia),4,"Bali, Indonesia"
+Equator to Dragons (Singapore to Indonesia),5,"Lombok, Indonesia"
+Equator to Dragons (Singapore to Indonesia),6,"Komodo National Park, Indonesia"
+Reef to Fjord (Australia to New Zealand),1,"Cairns, Australia"
+Reef to Fjord (Australia to New Zealand),2,"Sydney, Australia"
+Reef to Fjord (Australia to New Zealand),3,"Great Ocean Road, Australia"
+Reef to Fjord (Australia to New Zealand),4,"Auckland, New Zealand"
+Reef to Fjord (Australia to New Zealand),5,"Milford Sound, New Zealand"
+Reef to Fjord (Australia to New Zealand),6,"Queenstown, New Zealand"
