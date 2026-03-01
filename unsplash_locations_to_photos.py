@@ -113,7 +113,7 @@ def extract_fields(p: dict, query_used: str) -> dict:
         "photo_thumb": p.get("urls", {}).get("thumb", ""),
         "photo_small": p.get("urls", {}).get("small", ""),
         "photo_id": p.get("id", ""),
-        "likes": p.get("likes", ""),
+        "likes": str(p.get("likes", "")) if p else "",
         "photographer": p.get("user", {}).get("name", ""),
         "photographer_url": p.get("user", {}).get("links", {}).get("html", ""),
         "unsplash_page": p.get("links", {}).get("html", ""),
