@@ -28,6 +28,7 @@ jobs:
           python unsplash_locations_to_photos.py
 
       - name: Upload generated CSV
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: routes-with-photos
