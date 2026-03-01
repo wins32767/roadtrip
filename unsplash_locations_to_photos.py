@@ -58,6 +58,18 @@ def unsplash_search(query: str, per_page: int = PER_PAGE) -> list[dict]:
         "content_filter": CONTENT_FILTER,
     }
     r = requests.get(url, headers=HEADERS, params=params, timeout=30)
+
+    # Rate limit or forbidden: bail out gracefully
+    if r.status_code == 403:
+        # Helpful debug without leaking secrets
+        limit = r.headers.get("X-Ratelimit-Limit", "")
+        remaining = r.headers.get("X-Ratelimit-Remaining", "")
+        reset = r.headers.get("X-Ratelimit-Reset", "")
+        raise RuntimeError(
+            f"Unsplash 403 (likely rate limit). "
+            f"Limit={limit} Remaining={remaining} Reset={reset}"
+        )
+
     r.raise_for_status()
     return r.json().get("results", [])
 
@@ -145,10 +157,18 @@ def main():
             results = unsplash_search(query, per_page=PER_PAGE)
             best = pick_best(results)
             info = extract_fields(best, query_used=query)
-            print(f"[{i}/{len(unique_locs)}] {loc} -> {info['photo_id']} (likes={info['likes']})")
-        except requests.RequestException as e:
-            info = extract_fields({}, query_used=query)
-            print(f"[{i}/{len(unique_locs)}] ERROR {loc}: {e}")
+        except RuntimeError as e:
+            print(f"STOPPING EARLY: {e}")
+            cache[loc] = extract_fields({}, query_used=query)
+        
+            # write partial output immediately
+            for idx, row_loc in df[LOCATION_COL].items():
+                if row_loc in cache:
+                    for c in out_cols:
+                        df.at[idx, c] = cache[row_loc].get(c, "")
+            df.to_csv(OUTPUT_CSV, index=False)
+            print("Wrote partial:", OUTPUT_CSV)
+            return
 
         cache[loc] = info
         time.sleep(PAUSE_SECONDS)
