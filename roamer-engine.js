@@ -21,6 +21,30 @@ let confirmedDecoyNamesGlobal = new Set();
 // NEW: selected photo card (held in hand)
 let selectedCard = null;
 
+// Landscape layout detection
+let isLandscape = false;
+let resizeObserver = null;
+
+function checkLandscape() {
+  const overlay = document.getElementById('game-overlay');
+  if (!overlay) return false;
+  return overlay.offsetWidth > overlay.offsetHeight;
+}
+
+function attachResizeObserver() {
+  if (resizeObserver) resizeObserver.disconnect();
+  const overlay = document.getElementById('game-overlay');
+  if (!overlay || typeof ResizeObserver === 'undefined') return;
+  resizeObserver = new ResizeObserver(() => {
+    const nowLandscape = checkLandscape();
+    if (nowLandscape !== isLandscape && screen === 'play') {
+      isLandscape = nowLandscape;
+      render();
+    }
+  });
+  resizeObserver.observe(overlay);
+}
+
 const MAX_GUESSES = 3;
 let guessesRemaining = MAX_GUESSES;
 let guessHistory     = [];
@@ -52,6 +76,8 @@ function startGame(r, source) {
   mapCollapsed     = false;
   if (leafletMap)  { leafletMap.remove(); leafletMap = null; }
   screen = "play";
+  isLandscape = checkLandscape();
+  attachResizeObserver();
   render();
 }
 
@@ -125,7 +151,6 @@ function checkAnswers() {
   lastFeedback = feedback;
   guessHistory.push({ assignments: { ...assignments }, feedback: { ...feedback } });
   guessesRemaining--;
-  if (guessHistory.length === 1) mapCollapsed = true;
 
   const won  = correct === currentRoute.stops.length;
   const lost = guessesRemaining === 0;
@@ -553,16 +578,22 @@ function frozenRowHTML(gh, guessNum) {
   const FB_BG = {green:"rgba(22,101,52,0.3)",yellow:"rgba(113,63,18,0.35)",red:"rgba(127,29,29,0.3)"};
   const FB_BD = {green:"#4ade80",yellow:"#facc15",red:"#f87171"};
   const FB_IC = {green:"✓",yellow:"↕",red:"✗"};
-  return `<div style="margin-bottom:14px;opacity:0.65;">
-    <div class="guess-label">Guess ${guessNum}</div>
-    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px;">
-      ${currentRoute.stops.map((_,i)=>{
-        const card=gh.assignments[i], fb=gh.feedback[i];
-        const bd=fb?FB_BD[fb]:"rgba(255,255,255,0.1)", bg=fb?FB_BG[fb]:"rgba(255,255,255,0.03)";
-        return `<div data-expandsrc="${card?card.photo:""}" style="width:clamp(52px,14vw,72px);height:clamp(40px,10.5vw,54px);border-radius:8px;border:1.5px solid ${bd};background:${bg};position:relative;overflow:hidden;cursor:${card?"pointer":"default"};">
-          ${card?`<img src="${card.photo}" style="width:100%;height:100%;object-fit:cover;pointer-events:none;"/>`:
-            `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:16px;color:rgba(255,255,255,0.1);">${i+1}</div>`}
-          ${fb?`<div style="position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:50%;background:${FB_BD[fb]};display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#000;">${FB_IC[fb]}</div>`:""}
+  const correct = Object.values(gh.feedback).filter(f => f === "green").length;
+  const scoreCol = correct === currentRoute.stops.length ? "#4ade80" : "#7dd3fc";
+  return `<div class="frozen-row">
+    <div class="frozen-label">
+      <span style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-3);">G${guessNum}</span>
+      <span style="font-size:0.72rem;font-weight:500;color:${scoreCol};">${correct}/${currentRoute.stops.length}</span>
+    </div>
+    <div class="frozen-thumbs">
+      ${currentRoute.stops.map((_,i) => {
+        const card = gh.assignments[i], fb = gh.feedback[i];
+        const bd = fb ? FB_BD[fb] : "rgba(255,255,255,0.1)";
+        const bg = fb ? FB_BG[fb] : "rgba(255,255,255,0.03)";
+        return `<div style="position:relative;width:36px;height:28px;border-radius:5px;border:1.5px solid ${bd};background:${bg};overflow:hidden;flex-shrink:0;">
+          ${card ? `<img src="${card.photo}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"/>` :
+            `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:rgba(255,255,255,0.15);">${i+1}</div>`}
+          ${fb ? `<div style="position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;background:${FB_BD[fb]};display:flex;align-items:center;justify-content:center;font-size:0.45rem;font-weight:700;color:#000;line-height:1;">${FB_IC[fb]}</div>` : ""}
         </div>`;
       }).join("")}
     </div>
@@ -773,9 +804,14 @@ function render() {
     instruction = placed === 0 ? 'Tap a photo, then tap a numbered pin on the map' : `${placed} of ${currentRoute.stops.length} placed — keep going`;
   }
 
-  // Past guesses
+  // Past guesses — compact panel that goes full-width below the main layout
   const historyHTML = guessHistory.length > 0
-    ? `<div class="panel panel-padded">${[...guessHistory].reverse().map((gh,ri) => frozenRowHTML(gh, guessHistory.length - ri)).join("")}</div>`
+    ? `<div class="panel panel-padded guess-history-panel">
+        <div class="panel-label" style="margin-bottom:8px;">Past Guesses</div>
+        <div class="frozen-rows-wrap">
+          ${[...guessHistory].map((gh, i) => frozenRowHTML(gh, i + 1)).join("")}
+        </div>
+       </div>`
     : "";
 
   // Results
@@ -819,47 +855,39 @@ function render() {
       </div>`;
   }
 
-  app.innerHTML = `
-    <div class="play-header">
-      <div>
-        <div class="play-title">${currentRoute.name}</div>
-        <div class="play-meta">${currentRoute.region} · ${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</div>
+  // ── Map panel (shared between portrait and landscape) ──
+  const mapToggleHTML = `
+    <button class="map-toggle" id="map-toggle" aria-expanded="${!mapCollapsed}">
+      <div class="map-toggle-left">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0">
+          <circle cx="7" cy="7" r="6" stroke="rgba(125,211,252,0.5)" stroke-width="1.2" fill="none"/>
+          <circle cx="4" cy="7" r="1.5" fill="#7dd3fc"/>
+          <circle cx="10" cy="5" r="1.5" fill="#7dd3fc"/>
+          <path d="M5.5 7 Q7 5.5 8.5 5" stroke="rgba(125,211,252,0.6)" stroke-width="1" stroke-linecap="round" fill="none" stroke-dasharray="2 2"/>
+        </svg>
+        <span class="map-toggle-label">${mapCollapsed ? "Show route map" : "Route map"}</span>
       </div>
-      ${pipsHTML}
-    </div>
-
-    <div class="map-panel" id="map-panel">
-      <button class="map-toggle" id="map-toggle" aria-expanded="${!mapCollapsed}">
-        <div class="map-toggle-left">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0">
-            <circle cx="7" cy="7" r="6" stroke="rgba(125,211,252,0.5)" stroke-width="1.2" fill="none"/>
-            <circle cx="4" cy="7" r="1.5" fill="#7dd3fc"/>
-            <circle cx="10" cy="5" r="1.5" fill="#7dd3fc"/>
-            <path d="M5.5 7 Q7 5.5 8.5 5" stroke="rgba(125,211,252,0.6)" stroke-width="1" stroke-linecap="round" fill="none" stroke-dasharray="2 2"/>
-          </svg>
-          <span class="map-toggle-label">${mapCollapsed ? "Show route map" : "Route map"}</span>
-        </div>
-        <div class="map-toggle-right">
-          <span class="map-toggle-hint">${mapCollapsed ? "" : "tap to hide"}</span>
-          <svg class="map-chevron ${mapCollapsed ? "collapsed" : ""}" width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 4L6 8L10 4" stroke="#4a4f68" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        </div>
-      </button>
-      <div class="map-body ${mapCollapsed ? "map-body-hidden" : ""}">
-        ${revealed
-          ? `<div style="padding:0 10px 10px"><div id="leaflet-map"></div></div>`
-          : `<div style="padding:0 10px 8px">
-               <div id="map-canvas-wrapper" style="position:relative;width:100%;">
-                 <canvas id="route-canvas" style="width:100%;height:auto;display:block;border-radius:10px;"></canvas>
-               </div>
-             </div>`
-        }
+      <div class="map-toggle-right">
+        <span class="map-toggle-hint">${mapCollapsed ? "" : "tap to hide"}</span>
+        <svg class="map-chevron ${mapCollapsed ? "collapsed" : ""}" width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M2 4L6 8L10 4" stroke="#4a4f68" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
       </div>
-    </div>
+    </button>
+    <div class="map-body ${mapCollapsed ? "map-body-hidden" : ""}">
+      ${revealed
+        ? `<div style="padding:0 10px 10px"><div id="leaflet-map"></div></div>`
+        : `<div style="padding:0 10px 8px">
+             <div id="map-canvas-wrapper" style="position:relative;width:100%;">
+               <canvas id="route-canvas" style="width:100%;height:auto;display:block;border-radius:10px;"></canvas>
+             </div>
+           </div>`
+      }
+    </div>`;
 
-    ${!revealed ? `
-    <div class="panel panel-padded" style="margin-bottom:12px;">
+  // ── Photo panel (shared) ──
+  const photoPanelHTML = !revealed ? `
+    <div class="panel panel-padded photo-panel" id="photo-panel">
       <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:14px;">
         <div class="guess-label active-label">Guess ${guessNum} of ${MAX_GUESSES}</div>
         <div style="font-size:0.75rem;color:var(--text-3);font-weight:300;text-align:center;letter-spacing:0.01em;">${instruction}</div>
@@ -872,9 +900,43 @@ function render() {
           ${filled ? `Submit Guess ${guessNum} →` : `Place all ${currentRoute.stops.length} stops to continue`}
         </button>
       </div>
-    </div>
-    ${historyHTML}` : ""}
+    </div>` : '';
 
+  app.innerHTML = isLandscape && !revealed ? `
+    <div class="play-header">
+      <div>
+        <div class="play-title">${currentRoute.name}</div>
+        <div class="play-meta">${currentRoute.region} · ${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</div>
+      </div>
+      ${pipsHTML}
+    </div>
+
+    <div class="play-landscape-row">
+      <div class="play-col-map">
+        <div class="map-panel landscape-map-panel" id="map-panel">
+          ${mapToggleHTML}
+        </div>
+      </div>
+      <div class="play-col-photos">
+        ${photoPanelHTML}
+      </div>
+    </div>
+    ${historyHTML}
+  ` : `
+    <div class="play-header">
+      <div>
+        <div class="play-title">${currentRoute.name}</div>
+        <div class="play-meta">${currentRoute.region} · ${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</div>
+      </div>
+      ${pipsHTML}
+    </div>
+
+    <div class="map-panel" id="map-panel">
+      ${mapToggleHTML}
+    </div>
+
+    ${photoPanelHTML}
+    ${!revealed ? historyHTML : ''}
     ${resultsHTML}
   `;
 
