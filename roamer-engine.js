@@ -1,106 +1,115 @@
 /* ═══════════════════════════════════════════════════════
    ROAMER — Game engine
+   Interaction model: tap photo → tap pin to place
    Depends on: roamer-data.js (ROUTES, DAILY_INDEX)
    ═══════════════════════════════════════════════════════ */
 
 // ── State ──
-// screen: "home" | "core" | "play"
-let screen = "home";
+let screen       = "home";
 let currentRoute = null;
-let cards = [];
-let assignments = {}; // slot index -> card (derived from orderPicks)
-let orderPicks = [];  // cards in tap order: orderPicks[0] = stop 1, etc.
-let revealed = false;
-let score = null;
-let history = [];
-let leafletMap = null;
-let playSource = "home";
+let cards        = [];
+let assignments  = {};   // slotIndex -> card
+let revealed     = false;
+let score        = null;
+let history      = [];
+let leafletMap   = null;
+let playSource   = "home";
 let mapCollapsed = false;
 let lightboxIndex = null;
-let confirmedDecoyNamesGlobal = new Set(); // persists across render calls
+let confirmedDecoyNamesGlobal = new Set();
+
+// NEW: selected photo card (held in hand)
+let selectedCard = null;
 
 const MAX_GUESSES = 3;
 let guessesRemaining = MAX_GUESSES;
-let guessHistory = [];
-let lastFeedback = {};
-let lastGuessAssignments = {};
+let guessHistory     = [];
+let lastFeedback     = {};
 
 function shuffle(arr) {
   const a = [...arr];
-  for (let i = a.length-1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i+1));
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
 function startGame(r, source) {
-  currentRoute = r;
-  playSource = source || "home";
+  currentRoute     = r;
+  playSource       = source || "home";
   cards = shuffle([
-    ...r.stops.map(s => ({ ...s, isDecoy: false })),
-    ...r.decoys.map(d => ({ ...d, isDecoy: true, lat: 0, lng: 0 })),
+    ...r.stops.map(s  => ({ ...s,  isDecoy: false })),
+    ...r.decoys.map(d => ({ ...d,  isDecoy: true, lat: 0, lng: 0 })),
   ]);
-  assignments = {};
-  orderPicks = [];
-  revealed = false;
-  score = null;
+  assignments      = {};
+  selectedCard     = null;
+  revealed         = false;
+  score            = null;
   guessesRemaining = MAX_GUESSES;
-  guessHistory = [];
-  lastFeedback = {};
-  lastGuessAssignments = {};
-  mapCollapsed = false;
-  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  guessHistory     = [];
+  lastFeedback     = {};
+  mapCollapsed     = false;
+  if (leafletMap)  { leafletMap.remove(); leafletMap = null; }
   screen = "play";
-  render();
-  // Animation starts via render() -> startGeoAnimation()
-}
-
-// goBack defined in wiring section below
-
-function selectCard(card) {
-  selectedCard = (selectedCard?.name === card.name) ? null : card;
   render();
 }
 
 function slotIsLocked(i) {
   if (guessHistory.length === 0) return false;
-  return guessHistory[guessHistory.length-1].feedback[i] === "green";
+  return guessHistory[guessHistory.length - 1].feedback[i] === "green";
 }
 
-// Derive assignments map from orderPicks array
-function syncAssignments() {
-  assignments = {};
-  orderPicks.forEach((card, i) => { assignments[i] = card; });
-}
-
-// Tap a photo card: if not yet picked, add to end of sequence.
-// If already picked, remove it and everything after it (reset from that point).
-// Locked (green) positions are immovable.
-function tapCard(card) {
+// ── Interaction: tap a photo ──
+function tapPhoto(card) {
   if (revealed) return;
-  const existingIdx = orderPicks.findIndex(c => c.name === card.name);
-  if (existingIdx !== -1) {
-    // If this slot is locked, do nothing
-    if (slotIsLocked(existingIdx)) return;
-    // Remove from this position onward, keeping locked greens
-    const newPicks = [];
-    for (let i = 0; i < orderPicks.length; i++) {
-      if (i < existingIdx) newPicks.push(orderPicks[i]); // keep before
-      else if (slotIsLocked(i)) newPicks.push(orderPicks[i]); // keep locked
-      // drop everything from existingIdx onward that isn't locked
-    }
-    orderPicks = newPicks;
+  const isDecoyElim = confirmedDecoyNamesGlobal.has(card.name);
+  if (isDecoyElim) return;
+
+  // Find if this card is currently placed in a slot
+  const placedSlot = Object.entries(assignments).find(([, c]) => c.name === card.name);
+
+  if (selectedCard?.name === card.name) {
+    // Deselect
+    selectedCard = null;
+  } else if (placedSlot) {
+    const slotIdx = parseInt(placedSlot[0]);
+    if (slotIsLocked(slotIdx)) return; // can't pick up locked cards
+    // Pick it up — remove from slot, hold it
+    delete assignments[slotIdx];
+    selectedCard = card;
   } else {
-    // Find the next unfilled non-locked slot
-    const nextSlot = orderPicks.length;
-    if (nextSlot >= currentRoute.stops.length) return; // all filled
-    orderPicks.push(card);
+    // Select from pool
+    selectedCard = card;
   }
-  syncAssignments();
   render();
-  // Redraw geo map to show updated assignments
-  setTimeout(redrawGeoMap, 20);
+  redrawGeoMap();
+}
+
+// ── Interaction: tap a pin ──
+function tapPin(slotIndex) {
+  if (revealed) return;
+  if (slotIsLocked(slotIndex)) return;
+
+  if (selectedCard) {
+    // Place selected card here — if slot occupied, swap displaced card back to pool
+    // (assignments map handles this automatically — just overwrite)
+    assignments[slotIndex] = selectedCard;
+    selectedCard = null;
+  } else {
+    // No card held — if slot occupied, pick it up (remove)
+    if (assignments[slotIndex]) {
+      if (slotIsLocked(slotIndex)) return;
+      delete assignments[slotIndex];
+    }
+    // If slot empty and nothing held, do nothing
+  }
+  render();
+  redrawGeoMap();
+}
+
+function allSlotsFilled() {
+  return currentRoute.stops.every((_, i) => assignments[i]);
 }
 
 function checkAnswers() {
@@ -109,17 +118,18 @@ function checkAnswers() {
   currentRoute.stops.forEach((stop, i) => {
     const placed = assignments[i];
     if (!placed) return;
-    if (placed.name === stop.name) { feedback[i] = "green"; correct++; }
-    else if (!placed.isDecoy) feedback[i] = "yellow";
-    else feedback[i] = "red";
+    if (placed.name === stop.name)  { feedback[i] = "green";  correct++; }
+    else if (!placed.isDecoy)        { feedback[i] = "yellow"; }
+    else                             { feedback[i] = "red"; }
   });
   lastFeedback = feedback;
-  lastGuessAssignments = { ...assignments };
   guessHistory.push({ assignments: { ...assignments }, feedback: { ...feedback } });
   guessesRemaining--;
-  if (guessHistory.length === 1) mapCollapsed = true; // auto-collapse after first guess
-  const won = correct === currentRoute.stops.length;
+  if (guessHistory.length === 1) mapCollapsed = true;
+
+  const won  = correct === currentRoute.stops.length;
   const lost = guessesRemaining === 0;
+
   if (won || lost) {
     score = correct;
     revealed = true;
@@ -127,15 +137,15 @@ function checkAnswers() {
     render();
     setTimeout(initLeafletMap, 50);
   } else {
-    // Keep only locked (green) picks
-    const newPicks = [];
+    // Keep only green (locked) slots; clear others back to pool
+    const newAssignments = {};
     currentRoute.stops.forEach((_, i) => {
-      if (feedback[i] === "green") newPicks[i] = assignments[i];
+      if (feedback[i] === "green") newAssignments[i] = assignments[i];
     });
-    // Rebuild orderPicks: greens stay in place, rest cleared
-    orderPicks = currentRoute.stops.map((_, i) => newPicks[i]).filter(Boolean);
-    syncAssignments();
+    assignments  = newAssignments;
+    selectedCard = null;
     render();
+    if (!mapCollapsed) redrawGeoMap();
   }
 }
 
@@ -150,7 +160,7 @@ function initLeafletMap() {
   currentRoute.stops.forEach((stop, i) => {
     const correct = assignments[i]?.name === stop.name;
     const col = correct ? "#4ade80" : "#f87171";
-    const bg = correct ? "rgba(22,101,52,0.85)" : "rgba(127,29,29,0.85)";
+    const bg  = correct ? "rgba(22,101,52,0.85)" : "rgba(127,29,29,0.85)";
     const icon = L.divIcon({
       className: "",
       html: `<div style="display:flex;flex-direction:column;align-items:center;">
@@ -165,114 +175,37 @@ function initLeafletMap() {
   setTimeout(() => map.invalidateSize(), 200);
 }
 
-// ── OLD REPLACED ──
-function drawRouteCanvas_OLD() {
-  const canvas = document.getElementById("route-canvas");
-  if (!canvas) return;
-  const W = 600, H = 300, padding = 52;
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = W * dpr; canvas.height = H * dpr;
-  canvas.style.cssText = "width:100%;max-width:600px;height:auto;display:block;margin:0 auto;";
-  const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
-  const stops = currentRoute.stops;
-  const lats = stops.map(s=>s.lat), lngs = stops.map(s=>s.lng);
-  const minLat=Math.min(...lats), maxLat=Math.max(...lats), minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
-  const midLat = (minLat+maxLat)/2, cosLat = Math.cos(midLat*Math.PI/180);
-  const lngRange = maxLng-minLng||1, latRange = maxLat-minLat||1;
-  const geoAspect = (lngRange*cosLat)/latRange, boxAspect = (W-padding*2)/(H-padding*2);
-  const scale = geoAspect>boxAspect ? (W-padding*2)/(lngRange*cosLat) : (H-padding*2)/latRange;
-  const cx=(minLng+maxLng)/2, cy=(minLat+maxLat)/2;
-  const pts = stops.map(s=>({ x: W/2+(s.lng-cx)*cosLat*scale, y: H/2-(s.lat-cy)*scale }));
-  const minDist = 46;
-  for (let pass=0; pass<6; pass++) for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
-    const dx=pts[j].x-pts[i].x, dy=pts[j].y-pts[i].y, dist=Math.sqrt(dx*dx+dy*dy);
-    if (dist<minDist&&dist>0.1) { const push=(minDist-dist)/2, nx=dx/dist, ny=dy/dist; pts[i].x-=nx*push; pts[i].y-=ny*push; pts[j].x+=nx*push; pts[j].y+=ny*push; }
-  }
-  ctx.fillStyle="#07101f"; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle="rgba(125,211,252,0.04)";
-  for (let x=16;x<W;x+=24) for (let y=16;y<H;y+=24) { ctx.beginPath(); ctx.arc(x,y,0.9,0,Math.PI*2); ctx.fill(); }
-  ctx.beginPath(); pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
-  ctx.strokeStyle="rgba(125,211,252,0.07)"; ctx.lineWidth=14; ctx.lineCap="round"; ctx.stroke();
-  ctx.beginPath(); pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
-  ctx.strokeStyle="rgba(125,211,252,0.45)"; ctx.lineWidth=1.8; ctx.setLineDash([6,5]); ctx.stroke(); ctx.setLineDash([]);
-  ctx.font="10px 'DM Sans',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle="rgba(125,211,252,0.3)";
-  currentRoute.travelTimes.forEach((t,i)=>{
-    if(i>=pts.length-1)return;
-    const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
-    const dx=pts[i+1].x-pts[i].x, dy=pts[i+1].y-pts[i].y, len=Math.sqrt(dx*dx+dy*dy)||1;
-    ctx.fillText(t, mx+(-dy/len*16), my+(dx/len*16));
-  });
-  const nodeR=22;
-  pts.forEach((p,i)=>{
-    const assigned=assignments[i], empty=!assigned;
-    if(i===0){ctx.beginPath();ctx.arc(p.x,p.y,nodeR+8,0,Math.PI*2);ctx.strokeStyle="rgba(125,211,252,0.1)";ctx.lineWidth=1;ctx.stroke();}
-    ctx.beginPath(); ctx.arc(p.x,p.y,nodeR,0,Math.PI*2);
-    ctx.fillStyle = i===0&&empty?"rgba(125,211,252,0.08)":empty?"rgba(255,255,255,0.03)":"rgba(125,211,252,0.1)";
-    ctx.fill();
-    ctx.beginPath(); ctx.arc(p.x,p.y,nodeR,0,Math.PI*2);
-    if(i===0){ctx.strokeStyle="rgba(125,211,252,0.7)";ctx.lineWidth=2;ctx.setLineDash([]);}
-    else if(empty){ctx.strokeStyle="rgba(255,255,255,0.18)";ctx.lineWidth=1.5;ctx.setLineDash([4,3]);}
-    else{ctx.strokeStyle="rgba(125,211,252,0.6)";ctx.lineWidth=2;ctx.setLineDash([]);}
-    ctx.stroke(); ctx.setLineDash([]);
-    if(empty){
-      ctx.fillStyle=i===0?"rgba(125,211,252,0.8)":"rgba(255,255,255,0.3)";
-      ctx.font=`${i===0?"bold ":""}12px 'DM Sans',sans-serif`;
-      ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(i+1),p.x,p.y);
-    } else {
-      const img=new Image(); img.crossOrigin="anonymous";
-      img.onload=()=>{
-        ctx.save(); ctx.beginPath(); ctx.arc(p.x,p.y,nodeR-2,0,Math.PI*2); ctx.clip();
-        const d=(nodeR-2)*2; ctx.drawImage(img,p.x-(nodeR-2),p.y-(nodeR-2),d,d); ctx.restore();
-        ctx.beginPath(); ctx.arc(p.x,p.y,nodeR,0,Math.PI*2);
-        ctx.strokeStyle="rgba(125,211,252,0.7)"; ctx.lineWidth=2; ctx.stroke();
-      };
-      img.src=assigned.photo;
-      ctx.fillStyle="rgba(255,255,255,0.2)"; ctx.font="11px 'DM Sans',sans-serif";
-      ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(i+1),p.x,p.y);
-    }
-  });
-  ctx.font="bold 9px 'DM Sans',sans-serif"; ctx.textAlign="center";
-  ctx.fillStyle="rgba(125,211,252,0.65)"; ctx.fillText("START",pts[0].x,pts[0].y-nodeR-10);
-  ctx.fillStyle="rgba(255,255,255,0.25)"; ctx.fillText("END",pts[pts.length-1].x,pts[pts.length-1].y-nodeR-10);
-}
 
 /* ═══════════════════════════════════════════════════════════
-   GEO MAP SYSTEM — abstract world map with zoom animation
+   GEO MAP SYSTEM
+   Canvas: background + coastlines + route lines + travel times
+   HTML overlay: interactive pin buttons
    ═══════════════════════════════════════════════════════════ */
 
-// ── Simplified world coastline rings [lng, lat] ──
 const GEO_RINGS = [[[-67,47],[-70,46],[-72,45],[-74,45],[-76,44],[-79,43],[-80,43],[-82,42],[-83,42],[-83,44],[-84,46],[-85,47],[-88,48],[-95,49],[-100,49],[-110,49],[-115,49],[-123,49],[-124,49],[-124,48],[-124.5,47],[-124.5,45],[-124,44],[-124.5,42],[-124.5,40],[-124,39],[-123,38],[-123,37],[-122,36],[-121,35],[-120,34],[-118,34],[-118,33],[-117,32],[-114,32],[-111,31],[-108,31],[-106,32],[-104,29],[-101,28],[-99,27],[-97,27],[-97,26],[-96,27],[-94,29],[-93,29],[-90,28],[-90,29],[-88,30],[-85,30],[-82,29],[-82,26],[-82,24],[-81,24],[-81,25],[-80,25],[-80,27],[-80,29],[-80,31],[-80,32],[-79,33],[-78,34],[-77,34],[-76,35],[-76,37],[-76,38],[-75,39],[-74,40],[-73,41],[-71,42],[-70,43],[-69,44],[-68,44],[-67,47]],[[-141,60],[-148,60],[-152,58],[-158,57],[-162,60],[-164,63],[-168,66],[-165,60],[-160,59],[-156,60],[-153,60],[-141,68],[-141,60]],[[-117,32],[-116,31],[-114,30],[-112,28],[-110,26],[-109,24],[-110,23],[-117,32]],[[-81,24],[-81,25],[-80,25],[-80,24],[-81,24]],[[-117,32],[-110,23],[-109,23],[-105,20],[-97,22],[-94,22],[-92,21],[-90,21],[-89,21],[-88,21],[-87,20],[-86,18],[-87,18],[-88,18],[-90,21],[-92,21],[-96,21],[-97,20],[-92,19],[-90,18],[-88,16],[-83,10],[-77,8],[-77,9],[-83,11],[-88,16],[-90,18],[-92,19],[-96,22],[-97,26],[-97,27],[-99,27],[-101,28],[-104,29],[-106,32],[-108,31],[-111,31],[-117,32]],[[-25,83],[-44,76],[-52,70],[-64,66],[-57,63],[-52,67],[-43,70],[-24,72],[-18,76],[-15,82],[-25,83]],[[-77,8],[-72,12],[-72,10],[-68,6],[-62,4],[-58,2],[-62,-45],[-60,-38],[-57,-38],[-53,-34],[-50,-33],[-48,-28],[-45,-24],[-42,-23],[-39,-20],[-37,-14],[-35,-10],[-35,-4],[-40,2],[-50,5],[-52,-3],[-52,-10],[-56,-15],[-60,-22],[-62,-32],[-65,-38],[-66,-44],[-68,-54],[-65,-55],[-70,-30],[-70,-22],[-70,-18],[-72,-16],[-75,-14],[-77,-12],[-80,-8],[-80,-4],[-78,-2],[-80,2],[-80,6],[-77,8]],[[-5,48],[-3,50],[-2,51],[0,51],[1,51],[2,51],[3,51],[4,52],[8,57],[8,55],[10,55],[12,56],[10,58],[8,57],[5,57],[5,58],[8,62],[12,65],[15,68],[18,69],[20,70],[24,70],[26,68],[28,65],[26,60],[24,58],[22,58],[20,59],[18,57],[15,57],[14,55],[12,56],[10,55],[8,54],[7,51],[6,51],[5,51],[3,51],[2,51],[2,44],[3,44],[4,44],[5,44],[6,44],[7,44],[8,44],[9,41],[10,40],[10,38],[11,38],[12,38],[13,38],[14,38],[15,38],[16,38],[16,40],[16,41],[15,42],[14,44],[7,44],[6,44],[5,46],[6,47],[7,47],[8,47],[10,47],[12,47],[13,46],[14,46],[14,44],[13,44],[12,44],[11,44],[10,44],[9,44],[8,44],[7,44],[6,43],[5,43],[3,43],[-2,44],[-4,44],[-5,44],[-8,44],[-9,44],[-9,42],[-9,39],[-9,37],[-6,37],[-5,36],[-2,37],[-1,37],[0,38],[1,40],[3,42],[3,43],[0,44],[-1,44],[-2,44],[-2,47],[-5,48]],[[14,46],[14,44],[16,42],[18,41],[20,41],[20,40],[20,38],[22,37],[24,38],[26,40],[26,41],[26,42],[24,43],[22,44],[20,45],[18,46],[14,46]],[[20,38],[20,37],[22,36],[26,36],[28,37],[26,38],[24,37],[22,37],[20,38]],[[26,38],[26,42],[30,42],[34,42],[38,42],[42,42],[44,40],[42,38],[40,38],[38,37],[36,36],[32,36],[28,37],[26,38]],[[14,54],[14,52],[16,50],[18,50],[20,50],[22,56],[26,68],[28,70],[30,60],[30,58],[28,56],[24,58],[26,60],[28,60],[26,58],[24,58],[22,56],[18,54],[14,54]],[[28,70],[28,54],[30,46],[36,47],[42,52],[60,56],[80,54],[100,50],[110,50],[120,48],[130,50],[140,60],[140,50],[138,46],[134,36],[130,34],[126,34],[126,38],[130,42],[132,44],[138,46],[140,68],[140,70],[120,72],[100,73],[80,74],[60,72],[40,70],[28,70]],[[-5,36],[-5,32],[-8,28],[-12,24],[-16,20],[-16,12],[-14,10],[-10,6],[-4,5],[0,5],[5,2],[10,-8],[14,-22],[18,-30],[22,-34],[28,-34],[30,-25],[34,-18],[36,-5],[40,-1],[42,2],[44,4],[44,8],[42,12],[38,22],[37,22],[35,28],[33,30],[30,30],[25,31],[20,34],[15,37],[10,37],[5,37],[0,36],[-5,36]],[[44,-12],[44,-24],[50,-25],[50,-16],[44,-12]],[[34,32],[34,26],[36,22],[38,20],[42,14],[44,12],[48,12],[52,12],[58,14],[58,22],[56,24],[50,26],[44,28],[42,28],[38,30],[36,32],[34,32]],[[60,24],[68,28],[72,28],[74,32],[76,32],[80,32],[80,28],[82,26],[82,20],[82,14],[80,8],[78,8],[74,20],[72,22],[68,24],[60,24]],[[80,6],[78,8],[80,10],[82,8],[80,6]],[[96,20],[94,18],[96,8],[100,2],[104,2],[108,10],[106,14],[100,20],[96,20]],[[108,2],[108,6],[116,8],[118,8],[118,4],[108,2]],[[96,5],[98,2],[106,-2],[106,5],[96,5]],[[130,32],[130,34],[132,44],[141,44],[141,40],[140,38],[136,36],[134,35],[132,34],[130,32]],[[114,-22],[114,-26],[118,-32],[126,-34],[132,-34],[138,-36],[142,-38],[146,-38],[150,-38],[152,-34],[154,-32],[154,-28],[152,-26],[148,-22],[146,-20],[142,-18],[140,-16],[136,-12],[132,-12],[128,-14],[122,-18],[118,-20],[114,-22]],[[-84,22],[-82,23],[-78,23],[-75,22],[-74,20],[-75,20],[-78,20],[-82,22],[-84,22]],[[-74,18],[-74,20],[-72,20],[-68,20],[-68,18],[-74,18]],[[74,38],[74,36],[76,32],[80,28],[82,28],[88,28],[92,28],[96,28],[98,24],[100,22],[102,22],[104,22],[106,14],[108,16],[110,18],[114,22],[120,28],[122,32],[126,34],[126,40],[124,42],[122,46],[120,48],[116,48],[110,48],[106,48],[100,44],[96,44],[90,42],[86,44],[80,42],[74,38]]];
 
-// ── Map state ──
-let geoMapAnim = null; // animation frame handle
-let geoPhase = 'globe'; // 'globe' | 'zooming' | 'flat' | 'revealed'
+let geoT           = 0;
+let geoRot         = 0;
+let geoAnimHandle  = null;
+let geoAnimating   = false;
 
-// Per-route viewport: center + zoom padding
+// Cached projected pin positions (in canvas coords) — updated after flat animation settles
+let cachedPinPositions = []; // [{x, y}] index == stop index
+
 function getRouteViewport(route) {
   const lats = route.stops.map(s => s.lat);
   const lngs = route.stops.map(s => s.lng);
   const routeSpanLat = Math.max(...lats) - Math.min(...lats) || 4;
   const routeSpanLng = Math.max(...lngs) - Math.min(...lngs) || 6;
-  // Single viewport: readable nodes + surrounding coastline context
   const padLat = Math.max(5, routeSpanLat * 0.8);
   const padLng = Math.max(8, routeSpanLng * 1.0);
   const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
   const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-  return {
-    minLat: centerLat - padLat,
-    maxLat: centerLat + padLat,
-    minLng: centerLng - padLng,
-    maxLng: centerLng + padLng,
-    centerLat,
-    centerLng,
-  };
+  return { minLat: centerLat - padLat, maxLat: centerLat + padLat, minLng: centerLng - padLng, maxLng: centerLng + padLng, centerLat, centerLng };
 }
 
-// ── Projection helpers ──
-// Globe: 3D orthographic projection
 function globeProject(lat, lng, rotDeg, cx, cy, R) {
-  const phi = (90 - lat) * Math.PI / 180;
+  const phi   = (90 - lat) * Math.PI / 180;
   const theta = (lng + rotDeg) * Math.PI / 180;
   const x3 = R * Math.sin(phi) * Math.cos(theta);
   const y3 = R * Math.cos(phi);
@@ -280,9 +213,7 @@ function globeProject(lat, lng, rotDeg, cx, cy, R) {
   return { x: cx + x3, y: cy - y3, z3, visible: z3 > -R * 0.05 };
 }
 
-// Flat: simple equirectangular, no cos-lat correction
-// cosLat param kept for API compat but not used — avoids any inconsistency
-function flatProject(lat, lng, vp, W, H, _cosLat) {
+function flatProject(lat, lng, vp, W, H) {
   const latSpan = vp.maxLat - vp.minLat;
   const lngSpan = vp.maxLng - vp.minLng;
   const scaleByLat = H / latSpan;
@@ -290,202 +221,160 @@ function flatProject(lat, lng, vp, W, H, _cosLat) {
   const scale = Math.min(scaleByLat, scaleByLng) * 0.88;
   const offX = W / 2 - vp.centerLng * scale;
   const offY = H / 2 + vp.centerLat * scale;
-  return {
-    x: lng * scale + offX,
-    y: offY - lat * scale,
-  };
+  return { x: lng * scale + offX, y: offY - lat * scale };
 }
 
-// Interpolated project — t=0 globe, t=1 flat
-function lerpProject(lat, lng, t, rotDeg, vp, W, H, cosLat, cx, cy, R) {
+function lerpProject(lat, lng, t, rotDeg, vp, W, H, cx, cy, R) {
   const gp = globeProject(lat, lng, rotDeg, cx, cy, R);
-  const fp = flatProject(lat, lng, vp, W, H, cosLat);
-  // On globe: back-of-sphere points fade out. On flat map: all visible.
+  const fp = flatProject(lat, lng, vp, W, H);
   const globeVis = gp.visible ? 1 : 0;
-  const vis = globeVis + (1 - globeVis) * t; // smoothly reveal hidden points as t→1
-  return {
-    x: gp.x + (fp.x - gp.x) * t,
-    y: gp.y + (fp.y - gp.y) * t,
-    alpha: vis,
-  };
+  const vis = globeVis + (1 - globeVis) * t;
+  return { x: gp.x + (fp.x - gp.x) * t, y: gp.y + (fp.y - gp.y) * t, alpha: vis };
 }
 
-// ── Main draw function ──
+// ── Repulsion for pin overlay positions ──
+function computePinPositions(stops, vp, W, H) {
+  const pts = stops.map(s => ({ ...flatProject(s.lat, s.lng, vp, W, H) }));
+  const MIN_DIST = 52; // px — minimum centre-to-centre distance between pins
+  for (let pass = 0; pass < 20; pass++) {
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const dx = pts[j].x - pts[i].x;
+        const dy = pts[j].y - pts[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < MIN_DIST && dist > 0.01) {
+          const push = (MIN_DIST - dist) / 2;
+          const nx = dx / dist, ny = dy / dist;
+          pts[i].x -= nx * push; pts[i].y -= ny * push;
+          pts[j].x += nx * push; pts[j].y += ny * push;
+        }
+      }
+    }
+  }
+  return pts;
+}
+
+// ── Draw canvas: background, coastlines, route lines, travel times (NO pins) ──
 function drawGeoMap(t, rotDeg) {
-  // t: 0=full globe, 1=full flat map
   const canvas = document.getElementById('route-canvas');
   if (!canvas) return;
-
   const dpr = window.devicePixelRatio || 1;
-  const W = canvas.offsetWidth || 600;
-  const H = canvas.offsetHeight || 300;
+  const W   = canvas.offsetWidth  || 600;
+  const H   = canvas.offsetHeight || 300;
   if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-    canvas.width = W * dpr;
+    canvas.width  = W * dpr;
     canvas.height = H * dpr;
   }
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const vp = getRouteViewport(currentRoute);
-  const cosLat = Math.cos(vp.centerLat * Math.PI / 180);
-  const vpGeo = vp; // same viewport for land and nodes
-
-  // Globe geometry
+  const vp     = getRouteViewport(currentRoute);
   const cx = W * 0.5, cy = H * 0.48;
-  const R = Math.min(W, H) * (0.42 - t * 0.15); // globe shrinks as we zoom
+  const R  = Math.min(W, H) * (0.42 - t * 0.15);
 
-  // ── Background ──
-  // Water: deep blue, transitions from globe-dark to flat-ocean
-  const waterA = `rgba(7,16,31,1)`;
-  const waterB = `rgba(8,18,36,1)`;
-  ctx.fillStyle = t < 0.5 ? waterA : waterB;
+  // Background
+  ctx.fillStyle = t < 0.5 ? 'rgba(7,16,31,1)' : 'rgba(8,18,36,1)';
   ctx.fillRect(0, 0, W, H);
 
-  // At globe phase: draw sphere background + glow
+  // Globe sphere
   if (t < 0.95) {
-    const globeAlpha = Math.max(0, 1 - t * 1.6);
-    // Ocean fill on sphere
+    const gA = Math.max(0, 1 - t * 1.6);
     const grd = ctx.createRadialGradient(cx, cy, R * 0.3, cx, cy, R);
-    grd.addColorStop(0, `rgba(12,28,56,${globeAlpha * 0.9})`);
-    grd.addColorStop(1, `rgba(7,16,31,${globeAlpha})`);
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fillStyle = grd;
-    ctx.fill();
-    // Rim glow
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(125,211,252,${0.12 * globeAlpha})`;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    grd.addColorStop(0, `rgba(12,28,56,${gA * 0.9})`);
+    grd.addColorStop(1, `rgba(7,16,31,${gA})`);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = grd; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(125,211,252,${0.12 * gA})`; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
-  // At flat phase: subtle ocean gradient covering whole canvas
+  // Flat ocean overlay
   if (t > 0.3) {
-    const flatAlpha = Math.min(1, (t - 0.3) / 0.7);
-    const flatGrd = ctx.createLinearGradient(0, 0, W, H);
-    flatGrd.addColorStop(0, `rgba(8,18,40,${flatAlpha * 0.6})`);
-    flatGrd.addColorStop(1, `rgba(6,12,28,${flatAlpha * 0.6})`);
-    ctx.fillStyle = flatGrd;
-    ctx.fillRect(0, 0, W, H);
+    const fA = Math.min(1, (t - 0.3) / 0.7);
+    const fg = ctx.createLinearGradient(0, 0, W, H);
+    fg.addColorStop(0, `rgba(8,18,40,${fA * 0.6})`);
+    fg.addColorStop(1, `rgba(6,12,28,${fA * 0.6})`);
+    ctx.fillStyle = fg; ctx.fillRect(0, 0, W, H);
   }
 
-  // ── Land polygons ──
+  // Land polygons
   GEO_RINGS.forEach(ring => {
     if (ring.length < 3) return;
     ctx.beginPath();
     let started = false;
     ring.forEach(([lng, lat]) => {
-      const p = lerpProject(lat, lng, t, rotDeg, vp, W, H, cosLat, cx, cy, R);
+      const p = lerpProject(lat, lng, t, rotDeg, vp, W, H, cx, cy, R);
       if (p.alpha < 0.01) { started = false; return; }
       if (!started) { ctx.moveTo(p.x, p.y); started = true; }
       else ctx.lineTo(p.x, p.y);
     });
     if (started) ctx.closePath();
-    // Land fill: slightly lighter than ocean
-    const landAlpha = t < 0.5
-      ? 0.75  // opaque on globe
-      : 0.75 + (t - 0.5) * 0.5; // more opaque as flat
-    ctx.fillStyle = `rgba(18,32,56,${landAlpha})`;
-    ctx.fill();
-    // Border
-    ctx.strokeStyle = `rgba(125,211,252,${0.08 + t * 0.08})`;
-    ctx.lineWidth = t < 0.5 ? 0.5 : 0.7;
-    ctx.stroke();
+    const lA = t < 0.5 ? 0.75 : 0.75 + (t - 0.5) * 0.5;
+    ctx.fillStyle   = `rgba(18,32,56,${lA})`; ctx.fill();
+    ctx.strokeStyle = `rgba(125,211,252,${0.08 + t * 0.08})`; ctx.lineWidth = t < 0.5 ? 0.5 : 0.7; ctx.stroke();
   });
 
-  // ── Globe lat/lng grid (fades out during zoom) ──
+  // Globe grid
   if (t < 0.7) {
-    const gridAlpha = Math.max(0, (0.7 - t) / 0.7) * 0.06;
-    ctx.strokeStyle = `rgba(125,211,252,${gridAlpha})`;
-    ctx.lineWidth = 0.5;
+    const gA = Math.max(0, (0.7 - t) / 0.7) * 0.06;
+    ctx.strokeStyle = `rgba(125,211,252,${gA})`; ctx.lineWidth = 0.5;
     for (let lat = -60; lat <= 60; lat += 30) {
-      ctx.beginPath();
-      let first = true;
-      for (let lng = -180; lng <= 180; lng += 5) {
-        const p = globeProject(lat, lng, rotDeg, cx, cy, R);
-        if (!p.visible) { first = true; continue; }
-        first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
-        first = false;
+      ctx.beginPath(); let f = true;
+      for (let lng2 = -180; lng2 <= 180; lng2 += 5) {
+        const p = globeProject(lat, lng2, rotDeg, cx, cy, R);
+        if (!p.visible) { f = true; continue; }
+        f ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); f = false;
       }
       ctx.stroke();
     }
-    for (let lng = -180; lng < 180; lng += 30) {
-      ctx.beginPath();
-      let first = true;
+    for (let lng2 = -180; lng2 < 180; lng2 += 30) {
+      ctx.beginPath(); let f = true;
       for (let lat = -80; lat <= 80; lat += 4) {
-        const p = globeProject(lat, lng, rotDeg, cx, cy, R);
-        if (!p.visible) { first = true; continue; }
-        first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
-        first = false;
+        const p = globeProject(lat, lng2, rotDeg, cx, cy, R);
+        if (!p.visible) { f = true; continue; }
+        f ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); f = false;
       }
       ctx.stroke();
     }
   }
 
-  // ── Flat grid (fades in) ──
+  // Flat grid
   if (t > 0.5) {
-    const gridAlpha = Math.min(1, (t - 0.5) / 0.5) * 0.04;
-    ctx.strokeStyle = `rgba(125,211,252,${gridAlpha})`;
-    ctx.lineWidth = 0.5;
+    const gA = Math.min(1, (t - 0.5) / 0.5) * 0.04;
+    ctx.strokeStyle = `rgba(125,211,252,${gA})`; ctx.lineWidth = 0.5;
     for (let lat = -80; lat <= 80; lat += 15) {
       ctx.beginPath();
-      const a = flatProject(lat, vp.minLng - 10, vp, W, H, cosLat);
-      const b = flatProject(lat, vp.maxLng + 10, vp, W, H, cosLat);
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      const a = flatProject(lat, vp.minLng - 10, vp, W, H);
+      const b = flatProject(lat, vp.maxLng + 10, vp, W, H);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
-    for (let lng = -180; lng <= 180; lng += 15) {
+    for (let lng2 = -180; lng2 <= 180; lng2 += 15) {
       ctx.beginPath();
-      const a = flatProject(-80, lng, vp, W, H, cosLat);
-      const b = flatProject(80, lng, vp, W, H, cosLat);
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      const a = flatProject(-80, lng2, vp, W, H);
+      const b = flatProject(80,  lng2, vp, W, H);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
   }
 
-  // ── Route overlay (only when fully flat, t > 0.85) ──
+  // Route line + travel times (flat phase only)
   if (t > 0.85) {
-    const routeAlpha = Math.min(1, (t - 0.85) / 0.15);
-    const stops = currentRoute.stops;
-    let pts = stops.map(s => flatProject(s.lat, s.lng, vp, W, H, cosLat));
-    const nodeR = Math.max(16, Math.min(22, W / 28));
+    const rA   = Math.min(1, (t - 0.85) / 0.15);
+    const pts  = currentRoute.stops.map(s => flatProject(s.lat, s.lng, vp, W, H));
 
-    // Label offset positions — nodes stay at true geo coords, only labels shift
-    const labelPts = pts.map(p => ({ x: p.x, y: p.y }));
-    const minLabelDist = nodeR * 2.4;
-    for (let pass = 0; pass < 8; pass++) {
-      for (let i = 0; i < labelPts.length; i++) {
-        for (let j = i + 1; j < labelPts.length; j++) {
-          const dx = labelPts[j].x - labelPts[i].x, dy = labelPts[j].y - labelPts[i].y;
-          const dist = Math.sqrt(dx*dx + dy*dy);
-          if (dist < minLabelDist && dist > 0.01) {
-            const push = (minLabelDist - dist) / 2;
-            const nx = dx / dist, ny = dy / dist;
-            labelPts[i] = { x: labelPts[i].x - nx * push, y: labelPts[i].y - ny * push };
-            labelPts[j] = { x: labelPts[j].x + nx * push, y: labelPts[j].y + ny * push };
-          }
-        }
-      }
-    }
-
-    // Route line glow
+    // Glow line
     ctx.beginPath();
     pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-    ctx.strokeStyle = `rgba(125,211,252,${0.06 * routeAlpha})`;
-    ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.strokeStyle = `rgba(125,211,252,${0.06 * rA})`; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.stroke();
 
-    // Route line
+    // Dashed route line
     ctx.beginPath();
     pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-    ctx.strokeStyle = `rgba(125,211,252,${0.5 * routeAlpha})`;
-    ctx.lineWidth = 1.8; ctx.setLineDash([6, 5]); ctx.stroke();
+    ctx.strokeStyle = `rgba(125,211,252,${0.45 * rA})`; ctx.lineWidth = 1.8; ctx.setLineDash([6, 5]); ctx.stroke();
     ctx.setLineDash([]);
 
     // Travel times
-    ctx.font = `10px 'DM Sans', sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = `rgba(125,211,252,${0.3 * routeAlpha})`;
+    ctx.font = `10px 'DM Sans', sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = `rgba(125,211,252,${0.3 * rA})`;
     currentRoute.travelTimes.forEach((tt, i) => {
       if (i >= pts.length - 1) return;
       const mx = (pts[i].x + pts[i+1].x) / 2;
@@ -495,150 +384,156 @@ function drawGeoMap(t, rotDeg) {
       ctx.fillText(tt, mx + (-dy/len*14), my + (dx/len*14));
     });
 
-    // Stop nodes
-    pts.forEach((p, i) => {
-      const assigned = assignments[i], empty = !assigned;
-      if (i === 0) {
-        ctx.beginPath(); ctx.arc(p.x, p.y, nodeR + 7, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(125,211,252,${0.12 * routeAlpha})`;
-        ctx.lineWidth = 1; ctx.stroke();
-      }
-      ctx.beginPath(); ctx.arc(p.x, p.y, nodeR, 0, Math.PI * 2);
-      ctx.fillStyle = empty
-        ? (i === 0 ? `rgba(125,211,252,${0.09 * routeAlpha})` : `rgba(255,255,255,${0.03 * routeAlpha})`)
-        : `rgba(125,211,252,${0.12 * routeAlpha})`;
-      ctx.fill();
-      ctx.beginPath(); ctx.arc(p.x, p.y, nodeR, 0, Math.PI * 2);
-      if (i === 0) {
-        ctx.strokeStyle = `rgba(125,211,252,${0.75 * routeAlpha})`;
-        ctx.lineWidth = 2; ctx.setLineDash([]);
-      } else if (empty) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.18 * routeAlpha})`;
-        ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
-      } else {
-        ctx.strokeStyle = `rgba(125,211,252,${0.65 * routeAlpha})`;
-        ctx.lineWidth = 2; ctx.setLineDash([]);
-      }
-      ctx.stroke(); ctx.setLineDash([]);
-
-      if (empty) {
-        ctx.fillStyle = i === 0
-          ? `rgba(125,211,252,${0.85 * routeAlpha})`
-          : `rgba(255,255,255,${0.35 * routeAlpha})`;
-        ctx.font = `${i === 0 ? 'bold ' : ''}12px 'DM Sans', sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(String(i + 1), labelPts[i].x, labelPts[i].y);
-      } else {
-        const img = new Image(); img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          ctx.save(); ctx.beginPath();
-          ctx.arc(p.x, p.y, nodeR - 2, 0, Math.PI * 2); ctx.clip();
-          const d = (nodeR - 2) * 2;
-          ctx.drawImage(img, p.x - (nodeR-2), p.y - (nodeR-2), d, d);
-          ctx.restore();
-          ctx.beginPath(); ctx.arc(p.x, p.y, nodeR, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(125,211,252,${0.75 * routeAlpha})`; ctx.lineWidth = 2; ctx.stroke();
-        };
-        img.src = assigned.photo;
-        ctx.fillStyle = `rgba(255,255,255,${0.2 * routeAlpha})`;
-        ctx.font = '11px DM Sans, sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(String(i + 1), p.x, p.y);
-      }
-    });
-
-    // START / END labels
-    ctx.font = 'bold 9px DM Sans, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillStyle = `rgba(125,211,252,${0.65 * routeAlpha})`;
-    ctx.fillText('START', pts[0].x, pts[0].y - nodeR - 10);
-    ctx.fillStyle = `rgba(255,255,255,${0.25 * routeAlpha})`;
-    ctx.fillText('END', pts[pts.length-1].x, pts[pts.length-1].y - nodeR - 10);
+    // Cache repulsion-adjusted pin positions (in canvas-display px)
+    cachedPinPositions = computePinPositions(currentRoute.stops, vp, W, H);
   }
 }
 
-// ── Animation controller ──
-let geoT = 0; // 0 = globe, 1 = flat
-let geoRot = 0; // current globe rotation
-let geoAnimHandle = null;
-let geoAnimating = false;
+// ── Render HTML pin overlay on top of canvas ──
+function renderPinOverlay() {
+  const wrapper = document.getElementById('map-canvas-wrapper');
+  const canvas  = document.getElementById('route-canvas');
+  let overlay   = document.getElementById('pin-overlay');
+  if (!wrapper || !canvas) return;
 
+  // Create overlay div if missing
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'pin-overlay';
+    overlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+    wrapper.appendChild(overlay);
+  }
+
+  if (geoAnimating || geoT < 0.98) {
+    overlay.innerHTML = '';
+    return;
+  }
+
+  const W = canvas.offsetWidth;
+  const H = canvas.offsetHeight;
+  if (!W || !H) return;
+
+  const vp   = getRouteViewport(currentRoute);
+  const pins = computePinPositions(currentRoute.stops, vp, W, H);
+
+  const PIN_R = Math.max(20, Math.min(26, W / 26)); // px radius
+
+  overlay.innerHTML = currentRoute.stops.map((stop, i) => {
+    const p       = pins[i];
+    const card    = assignments[i];
+    const locked  = slotIsLocked(i);
+    const isStart = i === 0;
+    const isEnd   = i === currentRoute.stops.length - 1;
+
+    // Pin state styling
+    let borderCol, bgCol, labelContent, hasPhoto = false;
+    if (locked) {
+      borderCol = '#4ade80'; bgCol = 'rgba(22,101,52,0.85)';
+      labelContent = `<span style="color:#4ade80;font-size:1rem;">✓</span>`;
+    } else if (card) {
+      borderCol = 'var(--cyan)'; bgCol = 'rgba(6,10,18,0.7)';
+      hasPhoto  = true;
+      labelContent = `<img src="${card.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" />`;
+    } else if (selectedCard) {
+      // A card is selected — highlight empty pins as targets
+      borderCol = 'rgba(125,211,252,0.8)'; bgCol = 'rgba(125,211,252,0.12)';
+      labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.95rem;font-weight:500;color:var(--cyan);">${i + 1}</span>`;
+    } else {
+      borderCol = isStart ? 'rgba(125,211,252,0.7)' : 'rgba(255,255,255,0.22)';
+      bgCol     = isStart ? 'rgba(125,211,252,0.09)' : 'rgba(255,255,255,0.04)';
+      labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.9rem;font-weight:500;color:${isStart ? 'var(--cyan)' : 'rgba(255,255,255,0.5)'};">${i + 1}</span>`;
+    }
+
+    // Pulse ring for targeted empty slots when card is selected
+    const pulseRing = (selectedCard && !card && !locked)
+      ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:1.5px solid rgba(125,211,252,0.35);animation:pin-pulse 1.4s ease-in-out infinite;pointer-events:none;"></div>`
+      : '';
+
+    // START / END label
+    const startEndLabel = isStart
+      ? `<div style="position:absolute;top:${-PIN_R - 14}px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;letter-spacing:0.1em;font-family:'DM Sans',sans-serif;color:rgba(125,211,252,0.65);white-space:nowrap;pointer-events:none;">START</div>`
+      : isEnd
+        ? `<div style="position:absolute;top:${-PIN_R - 14}px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;letter-spacing:0.1em;font-family:'DM Sans',sans-serif;color:rgba(255,255,255,0.25);white-space:nowrap;pointer-events:none;">END</div>`
+        : '';
+
+    // Cursor
+    const cursor = locked ? 'default' : 'pointer';
+
+    return `<div class="map-pin" data-slot="${i}"
+      style="position:absolute;
+             left:${p.x}px;top:${p.y}px;
+             width:${PIN_R * 2}px;height:${PIN_R * 2}px;
+             transform:translate(-50%,-50%);
+             pointer-events:auto;
+             cursor:${cursor};">
+      ${pulseRing}
+      ${startEndLabel}
+      <div style="width:100%;height:100%;border-radius:50%;
+                  background:${bgCol};
+                  border:2px solid ${borderCol};
+                  display:flex;align-items:center;justify-content:center;
+                  overflow:hidden;
+                  box-shadow:${selectedCard && !card && !locked ? '0 0 12px rgba(125,211,252,0.3)' : '0 2px 8px rgba(0,0,0,0.5)'};
+                  transition:box-shadow 0.15s,border-color 0.15s;
+                  position:relative;">
+        ${labelContent}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Wire tap events
+  overlay.querySelectorAll('.map-pin').forEach(el => {
+    el.addEventListener('click', () => tapPin(parseInt(el.dataset.slot)));
+    el.addEventListener('touchend', e => { e.preventDefault(); tapPin(parseInt(el.dataset.slot)); }, { passive: false });
+  });
+}
+
+// ── Animation controller ──
 function startGeoAnimation() {
   if (geoAnimHandle) cancelAnimationFrame(geoAnimHandle);
   geoAnimating = true;
   geoT = 0;
-
-  // Start rotation centered on route
+  cachedPinPositions = [];
   const vp = getRouteViewport(currentRoute);
-  // Aim globe so route center is facing viewer (z forward = lng near 0 after rot)
   geoRot = -vp.centerLng;
-
-  const SPIN_DURATION = 800;   // ms spinning globe before zoom
-  const ZOOM_DURATION = 1400;  // ms zoom transition
-  const TOTAL = SPIN_DURATION + ZOOM_DURATION;
+  const SPIN_DURATION = 800, ZOOM_DURATION = 1400, TOTAL = SPIN_DURATION + ZOOM_DURATION;
   let startTime = null;
-
   function frame(ts) {
     if (!startTime) startTime = ts;
     const elapsed = ts - startTime;
-
     if (elapsed < SPIN_DURATION) {
-      // Spin globe, t stays 0
       geoRot = -vp.centerLng + (1 - elapsed / SPIN_DURATION) * 60;
-      geoT = 0;
+      geoT   = 0;
     } else {
-      // Zoom into flat map
-      const zoomElapsed = elapsed - SPIN_DURATION;
-      const raw = Math.min(1, zoomElapsed / ZOOM_DURATION);
-      // Ease in-out cubic
-      geoT = raw < 0.5
-        ? 4 * raw * raw * raw
-        : 1 - Math.pow(-2 * raw + 2, 3) / 2;
-      // Globe rotation settles to 0 during zoom
+      const zE  = elapsed - SPIN_DURATION;
+      const raw = Math.min(1, zE / ZOOM_DURATION);
+      geoT = raw < 0.5 ? 4 * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 3) / 2;
       geoRot = (-vp.centerLng) * (1 - geoT);
     }
-
     drawGeoMap(geoT, geoRot);
-
     if (elapsed < TOTAL) {
       geoAnimHandle = requestAnimationFrame(frame);
     } else {
-      geoT = 1;
-      geoAnimating = false;
+      geoT = 1; geoAnimating = false;
       drawGeoMap(1, 0);
+      renderPinOverlay(); // show pins once animation settles
     }
   }
-
   geoAnimHandle = requestAnimationFrame(frame);
 }
 
 function stopGeoAnimation() {
   if (geoAnimHandle) cancelAnimationFrame(geoAnimHandle);
-  geoAnimHandle = null;
-  geoAnimating = false;
+  geoAnimHandle = null; geoAnimating = false;
 }
 
-// Called when assignments change — redraw flat map without animation
 function redrawGeoMap() {
-  if (geoAnimating) return; // don't interrupt animation
+  if (geoAnimating) return;
   drawGeoMap(1, 0);
+  renderPinOverlay();
 }
 
-
-// ── Photo expand ──
-let expandedPhoto = null;
-function showExpand(src) {
-  const existing = document.getElementById('photo-expand');
-  if (existing) existing.remove();
-  const overlay = document.createElement('div');
-  overlay.id = 'photo-expand';
-  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);cursor:pointer;";
-  overlay.innerHTML = `<img src="${src}" style="max-width:min(500px,90vw);max-height:82vh;border-radius:14px;box-shadow:0 8px 48px rgba(0,0,0,0.8);object-fit:contain;" />`;
-  overlay.addEventListener('click', hideExpand);
-  document.body.appendChild(overlay);
-}
-function hideExpand() { document.getElementById('photo-expand')?.remove(); expandedPhoto = null; }
-
-// ── Mini SVG for route cards ──
+// ── Mini SVG ──
 function routeMiniSVG(r) {
   const lats=r.stops.map(s=>s.lat), lngs=r.stops.map(s=>s.lng);
   const minLat=Math.min(...lats), maxLat=Math.max(...lats), minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
@@ -674,18 +569,20 @@ function frozenRowHTML(gh, guessNum) {
   </div>`;
 }
 
-// ── Render ──
+
+/* ═══════════════════════════════════════════════════════════
+   RENDER
+   ═══════════════════════════════════════════════════════════ */
 function render() {
-  const app = document.getElementById("app");
+  const app      = document.getElementById("app");
   const navRight = document.getElementById("nav-right");
 
-  // Update nav right
   if (screen === "home") {
     navRight.innerHTML = `<button class="btn-ghost" id="nav-core">Grand Adventures</button>`;
     navRight.querySelector('#nav-core').addEventListener('click', () => { screen='core'; render(); });
   } else if (screen === "core") {
     navRight.innerHTML = `<button class="btn-ghost" id="nav-home">← Home</button>`;
-    navRight.querySelector('#nav-home').addEventListener('click', () => { closeOverlay(); });
+    navRight.querySelector('#nav-home').addEventListener('click', () => closeOverlay());
   } else {
     navRight.innerHTML = `<button class="btn-ghost" id="nav-back">← Back</button>`;
     navRight.querySelector('#nav-back').addEventListener('click', goBack);
@@ -694,7 +591,7 @@ function render() {
   // ── HOME ──
   if (screen === "home") {
     const daily = ROUTES[DAILY_INDEX];
-    const core = ROUTES.filter((_,i) => i !== DAILY_INDEX);
+    const core  = ROUTES.filter((_,i) => i !== DAILY_INDEX);
     let scoresHTML = "";
     if (history.length > 0) {
       scoresHTML = `<div class="scores-panel" style="margin:36px auto 0;">
@@ -723,12 +620,9 @@ function render() {
       </div>
       <div class="section-label">Winter 2024</div>
       <div class="route-grid">
-        ${core.map((r,i)=>{
+        ${core.map(r => {
           const ri = ROUTES.indexOf(r);
-          return `<button class="route-btn" data-route="${ri}">
-            ${routeMiniSVG(r)}
-            <div><div class="rname">${r.name}</div><div class="rmeta">${r.region} · ${r.stops.length} stops</div></div>
-          </button>`;
+          return `<button class="route-btn" data-route="${ri}">${routeMiniSVG(r)}<div><div class="rname">${r.name}</div><div class="rmeta">${r.region} · ${r.stops.length} stops</div></div></button>`;
         }).join("")}
       </div>
       ${scoresHTML}`;
@@ -753,13 +647,8 @@ function render() {
       grandBody = '<div class="section-label">Grand Adventures</div><div class="route-grid">'
         + grandRoutes.map(r => {
             const ri = ROUTES.indexOf(r);
-            return '<button class="route-btn" data-route="' + ri + '">'
-              + routeMiniSVG(r)
-              + '<div><div class="rname">' + r.name + '</div>'
-              + '<div class="rmeta">' + r.region + ' · ' + r.stops.length + ' stops · ' + r.decoys.length + ' decoys</div></div>'
-              + '</button>';
-          }).join('')
-        + '</div>';
+            return `<button class="route-btn" data-route="${ri}">${routeMiniSVG(r)}<div><div class="rname">${r.name}</div><div class="rmeta">${r.region} · ${r.stops.length} stops · ${r.decoys.length} decoys</div></div></button>`;
+          }).join('') + '</div>';
     }
     app.innerHTML = '<div style="margin-bottom:28px;">'
       + '<div class="home-eyebrow" style="text-align:left;margin-bottom:10px;">Pack</div>'
@@ -782,13 +671,7 @@ function render() {
       </div>
       <div class="section-label">All Routes</div>
       <div class="route-grid">
-        ${ROUTES.filter(r=>r.pack==='winter').map(r=>{const i=ROUTES.indexOf(r);return`<button class="route-btn" data-route="${i}">
-          ${routeMiniSVG(r)}
-          <div>
-            <div class="rname">${r.name}</div>
-            <div class="rmeta">${r.region} · ${r.stops.length} stops · ${r.decoys.length} decoys</div>
-          </div>
-        </button>`;}).join("")}
+        ${ROUTES.filter(r=>r.pack==='winter').map(r=>{const i=ROUTES.indexOf(r);return`<button class="route-btn" data-route="${i}">${routeMiniSVG(r)}<div><div class="rname">${r.name}</div><div class="rmeta">${r.region} · ${r.stops.length} stops · ${r.decoys.length} decoys</div></div></button>`;}).join("")}
       </div>`;
     document.querySelectorAll(".route-btn").forEach(btn => {
       btn.addEventListener("click", () => startGame(ROUTES[parseInt(btn.dataset.route)], "winter"));
@@ -797,108 +680,102 @@ function render() {
   }
 
   // ── PLAY ──
-  const confirmedDecoys = [];
+  // Collect confirmed decoys from guess history
   const confirmedDecoyNames = new Set();
   guessHistory.forEach(gh => {
-    Object.entries(gh.feedback).forEach(([si,fb]) => {
-      if (fb==="red") { const c=gh.assignments[si]; if(c&&!confirmedDecoyNames.has(c.name)){confirmedDecoys.push(c);confirmedDecoyNames.add(c.name);} }
+    Object.entries(gh.feedback).forEach(([si, fb]) => {
+      if (fb === "red") { const c = gh.assignments[si]; if (c) confirmedDecoyNames.add(c.name); }
     });
   });
-  confirmedDecoyNamesGlobal = confirmedDecoyNames; // keep in sync for lightbox
-  const assignedNames = new Set(Object.values(assignments).map(a=>a?.name).filter(Boolean));
-  const poolCards = cards.filter(c => !assignedNames.has(c.name) && !confirmedDecoyNames.has(c.name));
-  const allSlotsFilled = orderPicks.length === currentRoute.stops.length;
+  confirmedDecoyNamesGlobal = confirmedDecoyNames;
+
+  const filled = allSlotsFilled();
   const guessNum = guessHistory.length + 1;
 
   // Pips
   const pipsHTML = `<div class="guesses-pip">${Array.from({length:MAX_GUESSES},(_,i)=>{
-    let cls="pip";
-    if(i < guessHistory.length) {
-      const gh=guessHistory[i];
-      const c=Object.values(gh.feedback).filter(f=>f==="green").length;
-      cls += c===currentRoute.stops.length?" correct":" used";
+    let cls = "pip";
+    if (i < guessHistory.length) {
+      const gh = guessHistory[i];
+      const c  = Object.values(gh.feedback).filter(f=>f==="green").length;
+      cls += c === currentRoute.stops.length ? " correct" : " used";
     }
     return `<div class="${cls}"></div>`;
   }).join("")}</div>`;
 
-  // Tap-order photo grid
-  // All cards (pool + picked) shown together. Picked ones show their order number.
-  // Locked greens show lock badge. Tap to pick next, tap picked to undo from that point.
-  const nextPickNum = orderPicks.length + 1; // next number to assign
-  const allPhotosHTML = cards.map(c => {
-    const pickIdx = orderPicks.findIndex(p => p.name === c.name);
-    const isPicked = pickIdx !== -1;
+  // ── Photo grid ──
+  // Show all cards; placed ones show their slot number; selected one glows
+  const photoGridHTML = cards.map(c => {
     const isDecoyElim = confirmedDecoyNames.has(c.name);
-    const locked = isPicked && slotIsLocked(pickIdx);
-    const num = isPicked ? pickIdx + 1 : null;
+    const placedSlot  = Object.entries(assignments).find(([, a]) => a.name === c.name);
+    const slotIdx     = placedSlot ? parseInt(placedSlot[0]) : -1;
+    const isPlaced    = slotIdx !== -1;
+    const locked      = isPlaced && slotIsLocked(slotIdx);
+    const isSelected  = selectedCard?.name === c.name;
+    const inPool      = !isPlaced && !isDecoyElim;
 
-    let borderCol, bgCol, opacity = 1;
+    let borderCol, dimOverlay = '';
     if (isDecoyElim) {
-      borderCol = "rgba(248,113,113,0.35)"; bgCol = "rgba(127,29,29,0.15)"; opacity = 0.45;
+      borderCol = 'rgba(248,113,113,0.3)';
     } else if (locked) {
-      borderCol = "#4ade80"; bgCol = "rgba(22,101,52,0.2)";
-    } else if (isPicked) {
-      borderCol = "var(--cyan)"; bgCol = "rgba(125,211,252,0.08)";
+      borderCol = '#4ade80';
+    } else if (isSelected) {
+      borderCol = 'var(--cyan)';
+    } else if (isPlaced) {
+      borderCol = 'rgba(125,211,252,0.5)';
     } else {
-      borderCol = "var(--border)"; bgCol = "transparent";
+      borderCol = 'var(--border)';
     }
 
+    const opacity = isDecoyElim ? 0.38 : 1;
+    const scale   = isSelected  ? 'transform:scale(1.04);' : isPlaced ? 'transform:scale(0.96);' : '';
+    const cursor  = (locked || isDecoyElim) ? 'default' : 'pointer';
+
+    const badgeContent = locked
+      ? `<div class="photo-badge" style="background:rgba(22,101,52,0.9);border-color:#4ade80;"><span style="color:#4ade80;">✓</span></div>`
+      : isPlaced
+        ? `<div class="photo-badge" style="background:rgba(6,10,18,0.85);border-color:rgba(125,211,252,0.6);"><span style="color:var(--cyan);font-family:'Playfair Display',serif;">${slotIdx + 1}</span></div>`
+        : isDecoyElim
+          ? `<div class="photo-badge" style="background:rgba(127,29,29,0.85);border-color:#f87171;"><span style="color:#f87171;font-size:0.7rem;">✗</span></div>`
+          : '';
+
+    const selectedRing = isSelected
+      ? `<div style="position:absolute;inset:-3px;border-radius:17px;border:2px solid var(--cyan);animation:pin-pulse 1s ease-in-out infinite;pointer-events:none;"></div>`
+      : '';
+
     return `<div class="tap-card" data-name="${c.name}"
-      style="position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;
-             border:2px solid ${borderCol};background:${bgCol};opacity:${opacity};
-             cursor:${locked||isDecoyElim?"default":"pointer"};
-             transition:transform 0.15s,border-color 0.15s,opacity 0.2s;
-             ${isPicked&&!locked?"transform:scale(0.97)":""}">
-      <img src="${c.photo}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"
-           onerror="this.parentElement.style.background='#1a1f30';this.style.display='none'"/>
-      ${isPicked ? `
-        <div style="position:absolute;inset:0;background:rgba(0,0,0,${locked?0.15:0.35});pointer-events:none;"></div>
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-                    width:40px;height:40px;border-radius:50%;
-                    background:${locked?"rgba(22,101,52,0.9)":"rgba(6,10,18,0.85)"};
-                    border:2px solid ${locked?"#4ade80":"var(--cyan)"};
-                    display:flex;align-items:center;justify-content:center;pointer-events:none;">
-          <span style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:500;
-                       color:${locked?"#4ade80":"var(--cyan)"};">${locked?"✓":num}</span>
-        </div>
-        ${locked?"":""}`
-      : isDecoyElim ? `
-        <div style="position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;"></div>
-        <div style="position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;
-                    background:#f87171;display:flex;align-items:center;justify-content:center;
-                    font-size:9px;font-weight:700;color:#fff;">✗</div>`
-      : `<div style="position:absolute;inset:0;background:transparent;transition:background 0.15s;" class="tap-hover"></div>`}
+      style="position:relative;aspect-ratio:1/1;border-radius:14px;overflow:visible;
+             opacity:${opacity};cursor:${cursor};${scale}
+             transition:transform 0.15s,opacity 0.2s;">
+      <div style="position:absolute;inset:0;border-radius:14px;overflow:hidden;
+                  border:2px solid ${borderCol};transition:border-color 0.15s;
+                  box-shadow:${isSelected ? '0 0 16px rgba(125,211,252,0.35)' : 'none'};">
+        <img src="${c.photo}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"
+             onerror="this.style.display='none'"/>
+        ${isDecoyElim ? `<div style="position:absolute;inset:0;background:rgba(0,0,0,0.45);"></div>` : ''}
+      </div>
+      ${selectedRing}
+      ${badgeContent}
       <button class="expand-btn" data-expand="${cards.indexOf(c)}" aria-label="Expand">
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 4V1h3M7 1h3v3M10 7v3H7M4 10H1V7" stroke="rgba(240,239,245,0.7)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>`;
-  }).join("");
+  }).join('');
 
-  const instructionText = orderPicks.length === 0
-    ? "Tap photos in route order — stop 1 first"
-    : orderPicks.length < currentRoute.stops.length
-    ? `Tap stop ${nextPickNum} of ${currentRoute.stops.length}${confirmedDecoys.length > 0 ? " · avoid the decoys" : ""}`
-    : "All stops placed — submit when ready";
-
-  const gameGridHTML = `
-    <div class="panel panel-padded" style="margin-bottom:12px;">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:14px;">
-        <div class="guess-label active-label" style="margin-bottom:0;">Guess ${guessNum} of ${MAX_GUESSES}</div>
-        <div style="font-size:0.75rem;color:var(--text-3);font-weight:300;text-align:center;letter-spacing:0.01em;font-family:'DM Sans',sans-serif;">${instructionText}</div>
-      </div>
-      <div class="tap-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-        ${allPhotosHTML}
-      </div>
-      <div class="submit-wrap">
-        <button id="btn-submit" class="submit-btn ${allSlotsFilled?"active":"inactive"}" ${allSlotsFilled?"":"disabled"}>
-          ${allSlotsFilled ? `Submit Guess ${guessNum} →` : `Pick all ${currentRoute.stops.length} stops to continue`}
-        </button>
-      </div>
-    </div>`;
+  // Instruction text
+  let instruction;
+  if (selectedCard) {
+    instruction = `<span style="color:var(--cyan);">${selectedCard.name?.split(',')[0] ?? 'Photo'}</span> selected — tap a pin to place it`;
+  } else if (filled) {
+    instruction = 'All stops placed — submit when ready';
+  } else {
+    const placed = Object.keys(assignments).length;
+    instruction = placed === 0 ? 'Tap a photo, then tap a numbered pin on the map' : `${placed} of ${currentRoute.stops.length} placed — keep going`;
+  }
 
   // Past guesses
   const historyHTML = guessHistory.length > 0
-    ? `<div class="panel panel-padded">${[...guessHistory].reverse().map((gh,ri)=>frozenRowHTML(gh,guessHistory.length-ri)).join("")}</div>`
+    ? `<div class="panel panel-padded">${[...guessHistory].reverse().map((gh,ri) => frozenRowHTML(gh, guessHistory.length - ri)).join("")}</div>`
     : "";
 
   // Results
@@ -909,19 +786,15 @@ function render() {
     const resultMsg = won
       ? guessUsed===1?"Perfect — first try!":guessUsed===2?"Got it in 2!":"Solved it!"
       : score >= currentRoute.stops.length/2?"So close.":"Rough road.";
-    const shareEmoji = guessHistory.map(gh=>
-      currentRoute.stops.map((_,i)=>{const fb=gh.feedback[i];return fb==="green"?"🟩":fb==="yellow"?"🟨":fb==="red"?"🟥":"⬜";}).join("")
-    ).join("\n");
-    const shareText = `Roamer: ${currentRoute.name}\n${shareEmoji}`;
     resultsHTML = `
       <div class="results-inner">
         <div class="results-score" style="color:${won?"#4ade80":"#7dd3fc"}">${won?`Solved in ${guessUsed}/${MAX_GUESSES}`:`${score}/${currentRoute.stops.length} Correct`}</div>
         <div class="results-msg">${resultMsg}</div>
-        <div class="share-grid">${shareEmoji}</div>
+        <div class="share-grid">${guessHistory.map(gh=>currentRoute.stops.map((_,i)=>{const fb=gh.feedback[i];return fb==="green"?"🟩":fb==="yellow"?"🟨":fb==="red"?"🟥":"⬜";}).join("")).join("\n")}</div>
         <button class="btn-copy" id="btn-copy">Copy results</button>
         <div class="results-actions">
           <button class="btn-retry" id="btn-retry">Retry</button>
-          <button class="btn-menu" id="btn-menu">← Back</button>
+          <button class="btn-menu"  id="btn-menu">← Back</button>
         </div>
       </div>
       <div class="panel panel-padded">
@@ -954,6 +827,7 @@ function render() {
       </div>
       ${pipsHTML}
     </div>
+
     <div class="map-panel" id="map-panel">
       <button class="map-toggle" id="map-toggle" aria-expanded="${!mapCollapsed}">
         <div class="map-toggle-left">
@@ -975,48 +849,65 @@ function render() {
       <div class="map-body ${mapCollapsed ? "map-body-hidden" : ""}">
         ${revealed
           ? `<div style="padding:0 10px 10px"><div id="leaflet-map"></div></div>`
-          : `<div style="padding:0 10px 8px"><canvas id="route-canvas" style="width:100%;height:auto;display:block;border-radius:10px;"></canvas></div>`
+          : `<div style="padding:0 10px 8px">
+               <div id="map-canvas-wrapper" style="position:relative;width:100%;">
+                 <canvas id="route-canvas" style="width:100%;height:auto;display:block;border-radius:10px;"></canvas>
+               </div>
+             </div>`
         }
       </div>
     </div>
-    ${!revealed ? `${gameGridHTML}${historyHTML}` : ""}
+
+    ${!revealed ? `
+    <div class="panel panel-padded" style="margin-bottom:12px;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:14px;">
+        <div class="guess-label active-label">Guess ${guessNum} of ${MAX_GUESSES}</div>
+        <div style="font-size:0.75rem;color:var(--text-3);font-weight:300;text-align:center;letter-spacing:0.01em;">${instruction}</div>
+      </div>
+      <div class="tap-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        ${photoGridHTML}
+      </div>
+      <div class="submit-wrap">
+        <button id="btn-submit" class="submit-btn ${filled?"active":"inactive"}" ${filled?"":"disabled"}>
+          ${filled ? `Submit Guess ${guessNum} →` : `Place all ${currentRoute.stops.length} stops to continue`}
+        </button>
+      </div>
+    </div>
+    ${historyHTML}` : ""}
+
     ${resultsHTML}
   `;
 
   // Events
-  document.getElementById("btn-submit")?.addEventListener("click", ()=>{ if(allSlotsFilled) checkAnswers(); });
-  document.getElementById("btn-retry")?.addEventListener("click", ()=>startGame(currentRoute, playSource));
-  document.getElementById("btn-menu")?.addEventListener("click", goBack);
-  document.getElementById("btn-copy")?.addEventListener("click", function() {
-    const shareText=`Roamer: ${currentRoute.name}\n`+guessHistory.map(gh=>currentRoute.stops.map((_,i)=>{const fb=gh.feedback[i];return fb==="green"?"🟩":fb==="yellow"?"🟨":fb==="red"?"🟥":"⬜";}).join("")).join("\n");
-    navigator.clipboard.writeText(shareText).then(()=>{this.textContent="Copied!";});
+  document.getElementById("btn-submit")?.addEventListener("click", () => { if (allSlotsFilled()) checkAnswers(); });
+  document.getElementById("btn-retry")?.addEventListener("click",  () => startGame(currentRoute, playSource));
+  document.getElementById("btn-menu")?.addEventListener("click",   goBack);
+  document.getElementById("btn-copy")?.addEventListener("click",   function() {
+    const txt = `Roamer: ${currentRoute.name}\n` + guessHistory.map(gh =>
+      currentRoute.stops.map((_,i) => { const fb=gh.feedback[i]; return fb==="green"?"🟩":fb==="yellow"?"🟨":fb==="red"?"🟥":"⬜"; }).join("")
+    ).join("\n");
+    navigator.clipboard.writeText(txt).then(() => { this.textContent = "Copied!"; });
   });
 
   document.getElementById("map-toggle")?.addEventListener("click", () => {
     mapCollapsed = !mapCollapsed;
     render();
-    if (!mapCollapsed && !revealed) startGeoAnimation();
-    if (!mapCollapsed && revealed) setTimeout(initLeafletMap, 50);
+    if (!mapCollapsed && !revealed) { geoT = 0; startGeoAnimation(); }
+    if (!mapCollapsed && revealed)  { setTimeout(initLeafletMap, 50); }
   });
 
+  // Photo taps
   document.querySelectorAll(".tap-card").forEach(el => {
     const name = el.dataset.name;
     const card = cards.find(c => c.name === name);
     if (!card) return;
-    const pickIdx = orderPicks.findIndex(p => p.name === name);
-    const isDecoyElim = confirmedDecoyNames.has(name);
-    const locked = pickIdx !== -1 && slotIsLocked(pickIdx);
-    // Main card tap = assign (unless locked/eliminated)
-    if (!locked && !isDecoyElim) {
-      el.addEventListener("click", e => {
-        // Don't assign if the expand button was tapped
-        if (e.target.closest('.expand-btn')) return;
-        tapCard(card);
-      });
-    }
+    el.addEventListener("click", e => {
+      if (e.target.closest('.expand-btn')) return;
+      tapPhoto(card);
+    });
   });
 
-  // Expand buttons — separate from card tap
+  // Expand buttons
   document.querySelectorAll(".expand-btn").forEach(btn => {
     btn.addEventListener("click", e => {
       e.stopPropagation();
@@ -1024,25 +915,23 @@ function render() {
     });
   });
 
-
-
-  if(!revealed) {
+  // Map / animation
+  if (!revealed) {
     if (geoT === 0 && !geoAnimating) {
-      startGeoAnimation(); // only on first load
+      startGeoAnimation();
     } else if (!geoAnimating) {
-      redrawGeoMap(); // just redraw current state
+      redrawGeoMap();
     }
   }
 }
 
-// Boot
+// ── Boot ──
 render();
 
 
 /* ═══════════════════════════════════════════════════════
    OVERLAY & NAV WIRING
    ═══════════════════════════════════════════════════════ */
-
 function openOverlay() {
   const overlay = document.getElementById('game-overlay');
   overlay.classList.add('active');
@@ -1050,21 +939,15 @@ function openOverlay() {
   overlay.style.animation = 'none';
   requestAnimationFrame(() => { overlay.style.animation = ''; });
 }
-
 function closeOverlay() {
   const overlay = document.getElementById('game-overlay');
   overlay.classList.remove('active');
   if (leafletMap) { leafletMap.remove(); leafletMap = null; }
 }
-
 function goBack() {
   if (leafletMap) { leafletMap.remove(); leafletMap = null; }
-  if (playSource === 'core') {
-    screen = 'core';
-    render();
-  } else {
-    closeOverlay();
-  }
+  if (playSource === 'core') { screen = 'core'; render(); }
+  else closeOverlay();
 }
 
 /* ─── Entry-screen button wiring ─── */
@@ -1072,30 +955,17 @@ document.getElementById('play-btn').addEventListener('click', function(e) {
   e.preventDefault();
   this.style.transform = 'scale(0.97)';
   setTimeout(() => { this.style.transform = ''; }, 150);
-  setTimeout(() => {
-    startGame(ROUTES[DAILY_INDEX], 'home');
-    openOverlay();
-  }, 120);
+  setTimeout(() => { startGame(ROUTES[DAILY_INDEX], 'home'); openOverlay(); }, 120);
 });
 
 document.querySelector('.cta-secondary a').addEventListener('click', function(e) {
   e.preventDefault();
-  screen = 'core';
-  render();
-  openOverlay();
+  screen = 'core'; render(); openOverlay();
 });
 
 const packCards = document.querySelectorAll('.pack-card');
-if (packCards[0]) packCards[0].addEventListener('click', function() {
-  screen = 'core';
-  render();
-  openOverlay();
-});
-if (packCards[1]) packCards[1].addEventListener('click', function() {
-  screen = 'winter';
-  render();
-  openOverlay();
-});
+if (packCards[0]) packCards[0].addEventListener('click', function() { screen = 'core'; render(); openOverlay(); });
+if (packCards[1]) packCards[1].addEventListener('click', function() { screen = 'winter'; render(); openOverlay(); });
 
 /* ─── Boot ─── */
 render();

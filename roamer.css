@@ -917,3 +917,65 @@ body {
   .lb-img-wrap { padding: 56px 16px 72px; }
   .tap-grid { grid-template-columns: repeat(2, 1fr) !important; }
 }
+
+/* ═══════════════════════════════════════════════════════
+   PIN OVERLAY & PHOTO-FIRST INTERACTION
+   Append this to the bottom of roamer.css
+   ═══════════════════════════════════════════════════════ */
+
+/* Wrapper must be position:relative so the overlay can absolute-position inside */
+#map-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+}
+
+/* Pin overlay sits exactly on top of the canvas */
+#pin-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* Individual map pins */
+.map-pin {
+  position: absolute;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Pulse animation for target pins and selected photo ring */
+@keyframes pin-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.15); }
+}
+
+/* Photo badge — slot number / lock indicator overlaid on grid cards */
+.photo-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 4;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.6);
+}
+
+/* Tap-card base — overflow:visible so the badge peeks out */
+.tap-card {
+  position: relative;
+  overflow: visible !important;
+}
+
+
+
