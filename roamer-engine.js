@@ -14,7 +14,6 @@ let score        = null;
 let history      = [];
 let leafletMap   = null;
 let playSource   = "home";
-let mapCollapsed = false;
 let lightboxIndex = null;
 let confirmedDecoyNamesGlobal = new Set();
 
@@ -73,7 +72,6 @@ function startGame(r, source) {
   guessesRemaining = MAX_GUESSES;
   guessHistory     = [];
   lastFeedback     = {};
-  mapCollapsed     = false;
   if (leafletMap)  { leafletMap.remove(); leafletMap = null; }
   screen = "play";
   isLandscape = checkLandscape();
@@ -161,7 +159,7 @@ function checkAnswers() {
     assignments  = newAssignments;
     selectedCard = null;
     render();
-    if (!mapCollapsed) redrawGeoMap();
+    redrawGeoMap();
   }
 }
 
@@ -737,7 +735,7 @@ function render() {
     return `<div class="tap-card" data-name="${c.name}"
       style="position:relative;aspect-ratio:1/1;border-radius:14px;overflow:visible;
              opacity:${opacity};cursor:${cursor};${scale}transition:transform 0.15s,opacity 0.2s;">
-      <div style="position:absolute;inset:0;border-radius:14px;overflow:hidden;
+      <div style="position:absolute;inset:0;border-radius:14px;overflow:hidden;z-index:1;
                   border:2px solid ${borderCol};transition:border-color 0.15s;
                   box-shadow:${isSelected ? '0 0 16px rgba(125,211,252,0.35)' : 'none'};">
         <img src="${c.photo}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;"
@@ -746,7 +744,7 @@ function render() {
       </div>
       ${selectedRing}
       ${badgeContent}
-      <button class="expand-btn" data-expand="${cards.indexOf(c)}" aria-label="Expand">
+      <button class="expand-btn" data-expand="${cards.indexOf(c)}" aria-label="Expand" style="z-index:5;" onclick="event.stopPropagation();openLightbox(${cards.indexOf(c)})">
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 4V1h3M7 1h3v3M10 7v3H7M4 10H1V7" stroke="rgba(240,239,245,0.7)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>`;
@@ -814,44 +812,19 @@ function render() {
       </div>`;
   }
 
-  // Map panel
-  const mapToggleHTML = `
-    <button class="map-toggle" id="map-toggle" aria-expanded="${!mapCollapsed}">
-      <div class="map-toggle-left">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0">
-          <circle cx="7" cy="7" r="6" stroke="rgba(125,211,252,0.5)" stroke-width="1.2" fill="none"/>
-          <circle cx="4" cy="7" r="1.5" fill="#7dd3fc"/>
-          <circle cx="10" cy="5" r="1.5" fill="#7dd3fc"/>
-          <path d="M5.5 7 Q7 5.5 8.5 5" stroke="rgba(125,211,252,0.6)" stroke-width="1" stroke-linecap="round" fill="none" stroke-dasharray="2 2"/>
-        </svg>
-        <span class="map-toggle-label">${mapCollapsed ? "Show route map" : "Route map"}</span>
-      </div>
-      <div class="map-toggle-right">
-        <span class="map-toggle-hint">${mapCollapsed ? "" : "tap to hide"}</span>
-        <svg class="map-chevron ${mapCollapsed ? "collapsed" : ""}" width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 4L6 8L10 4" stroke="#4a4f68" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-      </div>
-    </button>
-    <div class="map-body ${mapCollapsed ? "map-body-hidden" : ""}">
-      ${revealed
-        ? `<div style="padding:0 10px 10px"><div id="leaflet-map"></div></div>`
-        : `<div style="padding:0 10px 8px">
-             <div id="map-canvas-wrapper" style="position:relative;width:100%;">
-               <canvas id="route-canvas" style="width:100%;height:auto;display:block;border-radius:10px;"></canvas>
-             </div>
-           </div>`
-      }
-    </div>`;
+  // Map panel — no toggle header, always shown
+  const mapContentHTML = revealed
+    ? `<div style="padding:6px"><div id="leaflet-map"></div></div>`
+    : `<div style="padding:6px">
+         <div id="map-canvas-wrapper" style="position:relative;width:100%;">
+           <canvas id="route-canvas" style="width:100%;height:auto;display:block;border-radius:10px;"></canvas>
+         </div>
+       </div>`;
 
   // Photo panel
   const photoPanelHTML = !revealed ? `
     <div class="panel panel-padded photo-panel" id="photo-panel">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:10px;">
-        <div class="guess-label active-label">Guess ${guessNum} of ${MAX_GUESSES}</div>
-        <div style="font-size:0.75rem;color:var(--text-3);font-weight:300;text-align:center;letter-spacing:0.01em;">${instruction}</div>
-      </div>
-      <div class="tap-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <div class="tap-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
         ${photoGridHTML}
       </div>
       <div class="submit-wrap">
@@ -867,7 +840,7 @@ function render() {
     <div class="play-landscape-row">
       <div class="play-col-map">
         <div class="map-panel landscape-map-panel" id="map-panel">
-          ${mapToggleHTML}
+          ${mapContentHTML}
         </div>
       </div>
       <div class="play-col-photos">
@@ -877,7 +850,7 @@ function render() {
   ` : `
     ${!revealed ? historyHTML : ''}
     <div class="map-panel" id="map-panel">
-      ${mapToggleHTML}
+      ${mapContentHTML}
     </div>
     ${photoPanelHTML}
     ${resultsHTML}
@@ -894,13 +867,6 @@ function render() {
     navigator.clipboard.writeText(txt).then(() => { this.textContent = "Copied!"; });
   });
 
-  document.getElementById("map-toggle")?.addEventListener("click", () => {
-    mapCollapsed = !mapCollapsed;
-    render();
-    if (!mapCollapsed && !revealed) { geoT = 0; startGeoAnimation(); }
-    if (!mapCollapsed && revealed)  { setTimeout(initLeafletMap, 50); }
-  });
-
   document.querySelectorAll(".tap-card").forEach(el => {
     const name = el.dataset.name;
     const card = cards.find(c => c.name === name);
@@ -908,13 +874,6 @@ function render() {
     el.addEventListener("click", e => {
       if (e.target.closest('.expand-btn')) return;
       tapPhoto(card);
-    });
-  });
-
-  document.querySelectorAll(".expand-btn").forEach(btn => {
-    btn.addEventListener("click", e => {
-      e.stopPropagation();
-      openLightbox(parseInt(btn.dataset.expand));
     });
   });
 

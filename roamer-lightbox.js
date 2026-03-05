@@ -39,7 +39,7 @@ function renderLightbox() {
   if (img.complete && img.naturalWidth) img.style.opacity = '1';
 
   // Badge and elim banner
-  const pickIdx = orderPicks.findIndex(p => p.name === card.name);
+  const pickIdx = typeof orderPicks !== 'undefined' ? orderPicks.findIndex(p => p.name === card.name) : -1;
   const isElim = confirmedDecoyNamesGlobal.has(card.name);
   const locked = pickIdx !== -1 && slotIsLocked(pickIdx);
   const elimBanner = document.getElementById('lb-elim-banner');
@@ -76,7 +76,7 @@ function renderLightbox() {
 
   // Dots
   dotsEl.innerHTML = cards.map((c, i) => {
-    const pi = orderPicks.findIndex(p => p.name === c.name);
+    const pi = typeof orderPicks !== 'undefined' ? orderPicks.findIndex(p => p.name === c.name) : -1;
     const eli = confirmedDecoyNamesGlobal.has(c.name);
     let cls = 'lb-dot';
     if (i === lightboxIndex) cls += ' active';
