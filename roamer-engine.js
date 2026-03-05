@@ -18,7 +18,7 @@ let mapCollapsed = false;
 let lightboxIndex = null;
 let confirmedDecoyNamesGlobal = new Set();
 
-// NEW: selected photo card (held in hand)
+// selected photo card (held in hand)
 let selectedCard = null;
 
 // Landscape layout detection
@@ -92,20 +92,16 @@ function tapPhoto(card) {
   const isDecoyElim = confirmedDecoyNamesGlobal.has(card.name);
   if (isDecoyElim) return;
 
-  // Find if this card is currently placed in a slot
   const placedSlot = Object.entries(assignments).find(([, c]) => c.name === card.name);
 
   if (selectedCard?.name === card.name) {
-    // Deselect
     selectedCard = null;
   } else if (placedSlot) {
     const slotIdx = parseInt(placedSlot[0]);
-    if (slotIsLocked(slotIdx)) return; // can't pick up locked cards
-    // Pick it up — remove from slot, hold it
+    if (slotIsLocked(slotIdx)) return;
     delete assignments[slotIdx];
     selectedCard = card;
   } else {
-    // Select from pool
     selectedCard = card;
   }
   render();
@@ -118,17 +114,13 @@ function tapPin(slotIndex) {
   if (slotIsLocked(slotIndex)) return;
 
   if (selectedCard) {
-    // Place selected card here — if slot occupied, swap displaced card back to pool
-    // (assignments map handles this automatically — just overwrite)
     assignments[slotIndex] = selectedCard;
     selectedCard = null;
   } else {
-    // No card held — if slot occupied, pick it up (remove)
     if (assignments[slotIndex]) {
       if (slotIsLocked(slotIndex)) return;
       delete assignments[slotIndex];
     }
-    // If slot empty and nothing held, do nothing
   }
   render();
   redrawGeoMap();
@@ -162,7 +154,6 @@ function checkAnswers() {
     render();
     setTimeout(initLeafletMap, 50);
   } else {
-    // Keep only green (locked) slots; clear others back to pool
     const newAssignments = {};
     currentRoute.stops.forEach((_, i) => {
       if (feedback[i] === "green") newAssignments[i] = assignments[i];
@@ -203,8 +194,6 @@ function initLeafletMap() {
 
 /* ═══════════════════════════════════════════════════════════
    GEO MAP SYSTEM
-   Canvas: background + coastlines + route lines + travel times
-   HTML overlay: interactive pin buttons
    ═══════════════════════════════════════════════════════════ */
 
 const GEO_RINGS = [[[-67,47],[-70,46],[-72,45],[-74,45],[-76,44],[-79,43],[-80,43],[-82,42],[-83,42],[-83,44],[-84,46],[-85,47],[-88,48],[-95,49],[-100,49],[-110,49],[-115,49],[-123,49],[-124,49],[-124,48],[-124.5,47],[-124.5,45],[-124,44],[-124.5,42],[-124.5,40],[-124,39],[-123,38],[-123,37],[-122,36],[-121,35],[-120,34],[-118,34],[-118,33],[-117,32],[-114,32],[-111,31],[-108,31],[-106,32],[-104,29],[-101,28],[-99,27],[-97,27],[-97,26],[-96,27],[-94,29],[-93,29],[-90,28],[-90,29],[-88,30],[-85,30],[-82,29],[-82,26],[-82,24],[-81,24],[-81,25],[-80,25],[-80,27],[-80,29],[-80,31],[-80,32],[-79,33],[-78,34],[-77,34],[-76,35],[-76,37],[-76,38],[-75,39],[-74,40],[-73,41],[-71,42],[-70,43],[-69,44],[-68,44],[-67,47]],[[-141,60],[-148,60],[-152,58],[-158,57],[-162,60],[-164,63],[-168,66],[-165,60],[-160,59],[-156,60],[-153,60],[-141,68],[-141,60]],[[-117,32],[-116,31],[-114,30],[-112,28],[-110,26],[-109,24],[-110,23],[-117,32]],[[-81,24],[-81,25],[-80,25],[-80,24],[-81,24]],[[-117,32],[-110,23],[-109,23],[-105,20],[-97,22],[-94,22],[-92,21],[-90,21],[-89,21],[-88,21],[-87,20],[-86,18],[-87,18],[-88,18],[-90,21],[-92,21],[-96,21],[-97,20],[-92,19],[-90,18],[-88,16],[-83,10],[-77,8],[-77,9],[-83,11],[-88,16],[-90,18],[-92,19],[-96,22],[-97,26],[-97,27],[-99,27],[-101,28],[-104,29],[-106,32],[-108,31],[-111,31],[-117,32]],[[-25,83],[-44,76],[-52,70],[-64,66],[-57,63],[-52,67],[-43,70],[-24,72],[-18,76],[-15,82],[-25,83]],[[-77,8],[-72,12],[-72,10],[-68,6],[-62,4],[-58,2],[-62,-45],[-60,-38],[-57,-38],[-53,-34],[-50,-33],[-48,-28],[-45,-24],[-42,-23],[-39,-20],[-37,-14],[-35,-10],[-35,-4],[-40,2],[-50,5],[-52,-3],[-52,-10],[-56,-15],[-60,-22],[-62,-32],[-65,-38],[-66,-44],[-68,-54],[-65,-55],[-70,-30],[-70,-22],[-70,-18],[-72,-16],[-75,-14],[-77,-12],[-80,-8],[-80,-4],[-78,-2],[-80,2],[-80,6],[-77,8]],[[-5,48],[-3,50],[-2,51],[0,51],[1,51],[2,51],[3,51],[4,52],[8,57],[8,55],[10,55],[12,56],[10,58],[8,57],[5,57],[5,58],[8,62],[12,65],[15,68],[18,69],[20,70],[24,70],[26,68],[28,65],[26,60],[24,58],[22,58],[20,59],[18,57],[15,57],[14,55],[12,56],[10,55],[8,54],[7,51],[6,51],[5,51],[3,51],[2,51],[2,44],[3,44],[4,44],[5,44],[6,44],[7,44],[8,44],[9,41],[10,40],[10,38],[11,38],[12,38],[13,38],[14,38],[15,38],[16,38],[16,40],[16,41],[15,42],[14,44],[7,44],[6,44],[5,46],[6,47],[7,47],[8,47],[10,47],[12,47],[13,46],[14,46],[14,44],[13,44],[12,44],[11,44],[10,44],[9,44],[8,44],[7,44],[6,43],[5,43],[3,43],[-2,44],[-4,44],[-5,44],[-8,44],[-9,44],[-9,42],[-9,39],[-9,37],[-6,37],[-5,36],[-2,37],[-1,37],[0,38],[1,40],[3,42],[3,43],[0,44],[-1,44],[-2,44],[-2,47],[-5,48]],[[14,46],[14,44],[16,42],[18,41],[20,41],[20,40],[20,38],[22,37],[24,38],[26,40],[26,41],[26,42],[24,43],[22,44],[20,45],[18,46],[14,46]],[[20,38],[20,37],[22,36],[26,36],[28,37],[26,38],[24,37],[22,37],[20,38]],[[26,38],[26,42],[30,42],[34,42],[38,42],[42,42],[44,40],[42,38],[40,38],[38,37],[36,36],[32,36],[28,37],[26,38]],[[14,54],[14,52],[16,50],[18,50],[20,50],[22,56],[26,68],[28,70],[30,60],[30,58],[28,56],[24,58],[26,60],[28,60],[26,58],[24,58],[22,56],[18,54],[14,54]],[[28,70],[28,54],[30,46],[36,47],[42,52],[60,56],[80,54],[100,50],[110,50],[120,48],[130,50],[140,60],[140,50],[138,46],[134,36],[130,34],[126,34],[126,38],[130,42],[132,44],[138,46],[140,68],[140,70],[120,72],[100,73],[80,74],[60,72],[40,70],[28,70]],[[-5,36],[-5,32],[-8,28],[-12,24],[-16,20],[-16,12],[-14,10],[-10,6],[-4,5],[0,5],[5,2],[10,-8],[14,-22],[18,-30],[22,-34],[28,-34],[30,-25],[34,-18],[36,-5],[40,-1],[42,2],[44,4],[44,8],[42,12],[38,22],[37,22],[35,28],[33,30],[30,30],[25,31],[20,34],[15,37],[10,37],[5,37],[0,36],[-5,36]],[[44,-12],[44,-24],[50,-25],[50,-16],[44,-12]],[[34,32],[34,26],[36,22],[38,20],[42,14],[44,12],[48,12],[52,12],[58,14],[58,22],[56,24],[50,26],[44,28],[42,28],[38,30],[36,32],[34,32]],[[60,24],[68,28],[72,28],[74,32],[76,32],[80,32],[80,28],[82,26],[82,20],[82,14],[80,8],[78,8],[74,20],[72,22],[68,24],[60,24]],[[80,6],[78,8],[80,10],[82,8],[80,6]],[[96,20],[94,18],[96,8],[100,2],[104,2],[108,10],[106,14],[100,20],[96,20]],[[108,2],[108,6],[116,8],[118,8],[118,4],[108,2]],[[96,5],[98,2],[106,-2],[106,5],[96,5]],[[130,32],[130,34],[132,44],[141,44],[141,40],[140,38],[136,36],[134,35],[132,34],[130,32]],[[114,-22],[114,-26],[118,-32],[126,-34],[132,-34],[138,-36],[142,-38],[146,-38],[150,-38],[152,-34],[154,-32],[154,-28],[152,-26],[148,-22],[146,-20],[142,-18],[140,-16],[136,-12],[132,-12],[128,-14],[122,-18],[118,-20],[114,-22]],[[-84,22],[-82,23],[-78,23],[-75,22],[-74,20],[-75,20],[-78,20],[-82,22],[-84,22]],[[-74,18],[-74,20],[-72,20],[-68,20],[-68,18],[-74,18]],[[74,38],[74,36],[76,32],[80,28],[82,28],[88,28],[92,28],[96,28],[98,24],[100,22],[102,22],[104,22],[106,14],[108,16],[110,18],[114,22],[120,28],[122,32],[126,34],[126,40],[124,42],[122,46],[120,48],[116,48],[110,48],[106,48],[100,44],[96,44],[90,42],[86,44],[80,42],[74,38]]];
@@ -213,9 +202,7 @@ let geoT           = 0;
 let geoRot         = 0;
 let geoAnimHandle  = null;
 let geoAnimating   = false;
-
-// Cached projected pin positions (in canvas coords) — updated after flat animation settles
-let cachedPinPositions = []; // [{x, y}] index == stop index
+let cachedPinPositions = [];
 
 function getRouteViewport(route) {
   const lats = route.stops.map(s => s.lat);
@@ -257,10 +244,9 @@ function lerpProject(lat, lng, t, rotDeg, vp, W, H, cx, cy, R) {
   return { x: gp.x + (fp.x - gp.x) * t, y: gp.y + (fp.y - gp.y) * t, alpha: vis };
 }
 
-// ── Repulsion for pin overlay positions ──
 function computePinPositions(stops, vp, W, H) {
   const pts = stops.map(s => ({ ...flatProject(s.lat, s.lng, vp, W, H) }));
-  const MIN_DIST = 52; // px — minimum centre-to-centre distance between pins
+  const MIN_DIST = 52;
   for (let pass = 0; pass < 20; pass++) {
     for (let i = 0; i < pts.length; i++) {
       for (let j = i + 1; j < pts.length; j++) {
@@ -279,7 +265,6 @@ function computePinPositions(stops, vp, W, H) {
   return pts;
 }
 
-// ── Draw canvas: background, coastlines, route lines, travel times (NO pins) ──
 function drawGeoMap(t, rotDeg) {
   const canvas = document.getElementById('route-canvas');
   if (!canvas) return;
@@ -293,15 +278,13 @@ function drawGeoMap(t, rotDeg) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const vp     = getRouteViewport(currentRoute);
+  const vp = getRouteViewport(currentRoute);
   const cx = W * 0.5, cy = H * 0.48;
   const R  = Math.min(W, H) * (0.42 - t * 0.15);
 
-  // Background
   ctx.fillStyle = t < 0.5 ? 'rgba(7,16,31,1)' : 'rgba(8,18,36,1)';
   ctx.fillRect(0, 0, W, H);
 
-  // Globe sphere
   if (t < 0.95) {
     const gA = Math.max(0, 1 - t * 1.6);
     const grd = ctx.createRadialGradient(cx, cy, R * 0.3, cx, cy, R);
@@ -313,7 +296,6 @@ function drawGeoMap(t, rotDeg) {
     ctx.strokeStyle = `rgba(125,211,252,${0.12 * gA})`; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
-  // Flat ocean overlay
   if (t > 0.3) {
     const fA = Math.min(1, (t - 0.3) / 0.7);
     const fg = ctx.createLinearGradient(0, 0, W, H);
@@ -322,7 +304,6 @@ function drawGeoMap(t, rotDeg) {
     ctx.fillStyle = fg; ctx.fillRect(0, 0, W, H);
   }
 
-  // Land polygons
   GEO_RINGS.forEach(ring => {
     if (ring.length < 3) return;
     ctx.beginPath();
@@ -339,7 +320,6 @@ function drawGeoMap(t, rotDeg) {
     ctx.strokeStyle = `rgba(125,211,252,${0.08 + t * 0.08})`; ctx.lineWidth = t < 0.5 ? 0.5 : 0.7; ctx.stroke();
   });
 
-  // Globe grid
   if (t < 0.7) {
     const gA = Math.max(0, (0.7 - t) / 0.7) * 0.06;
     ctx.strokeStyle = `rgba(125,211,252,${gA})`; ctx.lineWidth = 0.5;
@@ -363,7 +343,6 @@ function drawGeoMap(t, rotDeg) {
     }
   }
 
-  // Flat grid
   if (t > 0.5) {
     const gA = Math.min(1, (t - 0.5) / 0.5) * 0.04;
     ctx.strokeStyle = `rgba(125,211,252,${gA})`; ctx.lineWidth = 0.5;
@@ -381,23 +360,19 @@ function drawGeoMap(t, rotDeg) {
     }
   }
 
-  // Route line + travel times (flat phase only)
   if (t > 0.85) {
-    const rA   = Math.min(1, (t - 0.85) / 0.15);
-    const pts  = currentRoute.stops.map(s => flatProject(s.lat, s.lng, vp, W, H));
+    const rA  = Math.min(1, (t - 0.85) / 0.15);
+    const pts = currentRoute.stops.map(s => flatProject(s.lat, s.lng, vp, W, H));
 
-    // Glow line
     ctx.beginPath();
     pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
     ctx.strokeStyle = `rgba(125,211,252,${0.06 * rA})`; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.stroke();
 
-    // Dashed route line
     ctx.beginPath();
     pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
     ctx.strokeStyle = `rgba(125,211,252,${0.45 * rA})`; ctx.lineWidth = 1.8; ctx.setLineDash([6, 5]); ctx.stroke();
     ctx.setLineDash([]);
 
-    // Travel times
     ctx.font = `10px 'DM Sans', sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = `rgba(125,211,252,${0.3 * rA})`;
     currentRoute.travelTimes.forEach((tt, i) => {
@@ -409,19 +384,16 @@ function drawGeoMap(t, rotDeg) {
       ctx.fillText(tt, mx + (-dy/len*14), my + (dx/len*14));
     });
 
-    // Cache repulsion-adjusted pin positions (in canvas-display px)
     cachedPinPositions = computePinPositions(currentRoute.stops, vp, W, H);
   }
 }
 
-// ── Render HTML pin overlay on top of canvas ──
 function renderPinOverlay() {
   const wrapper = document.getElementById('map-canvas-wrapper');
   const canvas  = document.getElementById('route-canvas');
   let overlay   = document.getElementById('pin-overlay');
   if (!wrapper || !canvas) return;
 
-  // Create overlay div if missing
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.id = 'pin-overlay';
@@ -440,8 +412,7 @@ function renderPinOverlay() {
 
   const vp   = getRouteViewport(currentRoute);
   const pins = computePinPositions(currentRoute.stops, vp, W, H);
-
-  const PIN_R = Math.max(20, Math.min(26, W / 26)); // px radius
+  const PIN_R = Math.max(20, Math.min(26, W / 26));
 
   overlay.innerHTML = currentRoute.stops.map((stop, i) => {
     const p       = pins[i];
@@ -450,17 +421,14 @@ function renderPinOverlay() {
     const isStart = i === 0;
     const isEnd   = i === currentRoute.stops.length - 1;
 
-    // Pin state styling
-    let borderCol, bgCol, labelContent, hasPhoto = false;
+    let borderCol, bgCol, labelContent;
     if (locked) {
       borderCol = '#4ade80'; bgCol = 'rgba(22,101,52,0.85)';
       labelContent = `<span style="color:#4ade80;font-size:1rem;">✓</span>`;
     } else if (card) {
       borderCol = 'var(--cyan)'; bgCol = 'rgba(6,10,18,0.7)';
-      hasPhoto  = true;
       labelContent = `<img src="${card.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" />`;
     } else if (selectedCard) {
-      // A card is selected — highlight empty pins as targets
       borderCol = 'rgba(125,211,252,0.8)'; bgCol = 'rgba(125,211,252,0.12)';
       labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.95rem;font-weight:500;color:var(--cyan);">${i + 1}</span>`;
     } else {
@@ -469,51 +437,40 @@ function renderPinOverlay() {
       labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.9rem;font-weight:500;color:${isStart ? 'var(--cyan)' : 'rgba(255,255,255,0.5)'};">${i + 1}</span>`;
     }
 
-    // Pulse ring for targeted empty slots when card is selected
     const pulseRing = (selectedCard && !card && !locked)
       ? `<div style="position:absolute;inset:-6px;border-radius:50%;border:1.5px solid rgba(125,211,252,0.35);animation:pin-pulse 1.4s ease-in-out infinite;pointer-events:none;"></div>`
       : '';
 
-    // START / END label
     const startEndLabel = isStart
       ? `<div style="position:absolute;top:${-PIN_R - 14}px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;letter-spacing:0.1em;font-family:'DM Sans',sans-serif;color:rgba(125,211,252,0.65);white-space:nowrap;pointer-events:none;">START</div>`
       : isEnd
         ? `<div style="position:absolute;top:${-PIN_R - 14}px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;letter-spacing:0.1em;font-family:'DM Sans',sans-serif;color:rgba(255,255,255,0.25);white-space:nowrap;pointer-events:none;">END</div>`
         : '';
 
-    // Cursor
     const cursor = locked ? 'default' : 'pointer';
 
     return `<div class="map-pin" data-slot="${i}"
-      style="position:absolute;
-             left:${p.x}px;top:${p.y}px;
+      style="position:absolute;left:${p.x}px;top:${p.y}px;
              width:${PIN_R * 2}px;height:${PIN_R * 2}px;
-             transform:translate(-50%,-50%);
-             pointer-events:auto;
-             cursor:${cursor};">
+             transform:translate(-50%,-50%);pointer-events:auto;cursor:${cursor};">
       ${pulseRing}
       ${startEndLabel}
-      <div style="width:100%;height:100%;border-radius:50%;
-                  background:${bgCol};
-                  border:2px solid ${borderCol};
-                  display:flex;align-items:center;justify-content:center;
-                  overflow:hidden;
+      <div style="width:100%;height:100%;border-radius:50%;background:${bgCol};
+                  border:2px solid ${borderCol};display:flex;align-items:center;justify-content:center;
+                  overflow:hidden;position:relative;
                   box-shadow:${selectedCard && !card && !locked ? '0 0 12px rgba(125,211,252,0.3)' : '0 2px 8px rgba(0,0,0,0.5)'};
-                  transition:box-shadow 0.15s,border-color 0.15s;
-                  position:relative;">
+                  transition:box-shadow 0.15s,border-color 0.15s;">
         ${labelContent}
       </div>
     </div>`;
   }).join('');
 
-  // Wire tap events
   overlay.querySelectorAll('.map-pin').forEach(el => {
     el.addEventListener('click', () => tapPin(parseInt(el.dataset.slot)));
     el.addEventListener('touchend', e => { e.preventDefault(); tapPin(parseInt(el.dataset.slot)); }, { passive: false });
   });
 }
 
-// ── Animation controller ──
 function startGeoAnimation() {
   if (geoAnimHandle) cancelAnimationFrame(geoAnimHandle);
   geoAnimating = true;
@@ -541,7 +498,7 @@ function startGeoAnimation() {
     } else {
       geoT = 1; geoAnimating = false;
       drawGeoMap(1, 0);
-      renderPinOverlay(); // show pins once animation settles
+      renderPinOverlay();
     }
   }
   geoAnimHandle = requestAnimationFrame(frame);
@@ -558,7 +515,6 @@ function redrawGeoMap() {
   renderPinOverlay();
 }
 
-// ── Mini SVG ──
 function routeMiniSVG(r) {
   const lats=r.stops.map(s=>s.lat), lngs=r.stops.map(s=>s.lng);
   const minLat=Math.min(...lats), maxLat=Math.max(...lats), minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
@@ -573,7 +529,6 @@ function routeMiniSVG(r) {
   </svg>`;
 }
 
-// ── Frozen guess row ──
 function frozenRowHTML(gh, guessNum) {
   const FB_BG = {green:"rgba(22,101,52,0.3)",yellow:"rgba(113,63,18,0.35)",red:"rgba(127,29,29,0.3)"};
   const FB_BD = {green:"#4ade80",yellow:"#facc15",red:"#f87171"};
@@ -607,16 +562,41 @@ function frozenRowHTML(gh, guessNum) {
 function render() {
   const app      = document.getElementById("app");
   const navRight = document.getElementById("nav-right");
+  const navEl    = document.querySelector('.nav');
 
-  if (screen === "home") {
+  // ── Nav: merged into single bar during play ──
+  if (screen === "play") {
+    const pipsHTML = `<div class="guesses-pip">${Array.from({length:MAX_GUESSES},(_,i)=>{
+      let cls = "pip";
+      if (i < guessHistory.length) {
+        const gh = guessHistory[i];
+        const c  = Object.values(gh.feedback).filter(f=>f==="green").length;
+        cls += c === currentRoute.stops.length ? " correct" : " used";
+      }
+      return `<div class="${cls}"></div>`;
+    }).join("")}</div>`;
+    navRight.innerHTML = `
+      <div class="nav-play-meta">
+        <span class="nav-play-title">${currentRoute.name}</span>
+        <span class="nav-play-sub">${currentRoute.region} · ${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</span>
+      </div>
+      ${pipsHTML}
+      <button class="btn-ghost" id="nav-back">← Back</button>
+    `;
+    navRight.querySelector('#nav-back').addEventListener('click', goBack);
+    if (navEl) navEl.classList.add('nav-play-mode');
+  } else if (screen === "home") {
     navRight.innerHTML = `<button class="btn-ghost" id="nav-core">Grand Adventures</button>`;
     navRight.querySelector('#nav-core').addEventListener('click', () => { screen='core'; render(); });
+    if (navEl) navEl.classList.remove('nav-play-mode');
   } else if (screen === "core") {
     navRight.innerHTML = `<button class="btn-ghost" id="nav-home">← Home</button>`;
     navRight.querySelector('#nav-home').addEventListener('click', () => closeOverlay());
+    if (navEl) navEl.classList.remove('nav-play-mode');
   } else {
     navRight.innerHTML = `<button class="btn-ghost" id="nav-back">← Back</button>`;
     navRight.querySelector('#nav-back').addEventListener('click', goBack);
+    if (navEl) navEl.classList.remove('nav-play-mode');
   }
 
   // ── HOME ──
@@ -711,7 +691,6 @@ function render() {
   }
 
   // ── PLAY ──
-  // Collect confirmed decoys from guess history
   const confirmedDecoyNames = new Set();
   guessHistory.forEach(gh => {
     Object.entries(gh.feedback).forEach(([si, fb]) => {
@@ -720,22 +699,10 @@ function render() {
   });
   confirmedDecoyNamesGlobal = confirmedDecoyNames;
 
-  const filled = allSlotsFilled();
+  const filled   = allSlotsFilled();
   const guessNum = guessHistory.length + 1;
 
-  // Pips
-  const pipsHTML = `<div class="guesses-pip">${Array.from({length:MAX_GUESSES},(_,i)=>{
-    let cls = "pip";
-    if (i < guessHistory.length) {
-      const gh = guessHistory[i];
-      const c  = Object.values(gh.feedback).filter(f=>f==="green").length;
-      cls += c === currentRoute.stops.length ? " correct" : " used";
-    }
-    return `<div class="${cls}"></div>`;
-  }).join("")}</div>`;
-
   // ── Photo grid ──
-  // Show all cards; placed ones show their slot number; selected one glows
   const photoGridHTML = cards.map(c => {
     const isDecoyElim = confirmedDecoyNames.has(c.name);
     const placedSlot  = Object.entries(assignments).find(([, a]) => a.name === c.name);
@@ -743,20 +710,13 @@ function render() {
     const isPlaced    = slotIdx !== -1;
     const locked      = isPlaced && slotIsLocked(slotIdx);
     const isSelected  = selectedCard?.name === c.name;
-    const inPool      = !isPlaced && !isDecoyElim;
 
-    let borderCol, dimOverlay = '';
-    if (isDecoyElim) {
-      borderCol = 'rgba(248,113,113,0.3)';
-    } else if (locked) {
-      borderCol = '#4ade80';
-    } else if (isSelected) {
-      borderCol = 'var(--cyan)';
-    } else if (isPlaced) {
-      borderCol = 'rgba(125,211,252,0.5)';
-    } else {
-      borderCol = 'var(--border)';
-    }
+    let borderCol;
+    if (isDecoyElim)     borderCol = 'rgba(248,113,113,0.3)';
+    else if (locked)     borderCol = '#4ade80';
+    else if (isSelected) borderCol = 'var(--cyan)';
+    else if (isPlaced)   borderCol = 'rgba(125,211,252,0.5)';
+    else                 borderCol = 'var(--border)';
 
     const opacity = isDecoyElim ? 0.38 : 1;
     const scale   = isSelected  ? 'transform:scale(1.04);' : isPlaced ? 'transform:scale(0.96);' : '';
@@ -776,8 +736,7 @@ function render() {
 
     return `<div class="tap-card" data-name="${c.name}"
       style="position:relative;aspect-ratio:1/1;border-radius:14px;overflow:visible;
-             opacity:${opacity};cursor:${cursor};${scale}
-             transition:transform 0.15s,opacity 0.2s;">
+             opacity:${opacity};cursor:${cursor};${scale}transition:transform 0.15s,opacity 0.2s;">
       <div style="position:absolute;inset:0;border-radius:14px;overflow:hidden;
                   border:2px solid ${borderCol};transition:border-color 0.15s;
                   box-shadow:${isSelected ? '0 0 16px rgba(125,211,252,0.35)' : 'none'};">
@@ -804,7 +763,7 @@ function render() {
     instruction = placed === 0 ? 'Tap a photo, then tap a numbered pin on the map' : `${placed} of ${currentRoute.stops.length} placed — keep going`;
   }
 
-  // Past guesses — compact panel that goes full-width below the main layout
+  // Past guesses
   const historyHTML = guessHistory.length > 0
     ? `<div class="panel panel-padded guess-history-panel">
         <div class="panel-label" style="margin-bottom:8px;">Past Guesses</div>
@@ -838,7 +797,7 @@ function render() {
         <div class="reveal-grid">
           ${currentRoute.stops.map((s,i)=>{
             const correct=assignments[i]?.name===s.name, guessed=assignments[i];
-            return `<div class="reveal-card ${correct?"correct":"wrong"}" data-expandsrc="${s.photo}">
+            return `<div class="reveal-card ${correct?"correct":"wrong"}">
               <img src="${s.photo}" alt=""/>
               <div class="reveal-overlay">
                 <div class="reveal-top"><div class="reveal-num">${i+1}</div><div class="reveal-check">${correct?"✓":"✗"}</div></div>
@@ -855,7 +814,7 @@ function render() {
       </div>`;
   }
 
-  // ── Map panel (shared between portrait and landscape) ──
+  // Map panel
   const mapToggleHTML = `
     <button class="map-toggle" id="map-toggle" aria-expanded="${!mapCollapsed}">
       <div class="map-toggle-left">
@@ -885,10 +844,10 @@ function render() {
       }
     </div>`;
 
-  // ── Photo panel (shared) ──
+  // Photo panel
   const photoPanelHTML = !revealed ? `
     <div class="panel panel-padded photo-panel" id="photo-panel">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:14px;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:10px;">
         <div class="guess-label active-label">Guess ${guessNum} of ${MAX_GUESSES}</div>
         <div style="font-size:0.75rem;color:var(--text-3);font-weight:300;text-align:center;letter-spacing:0.01em;">${instruction}</div>
       </div>
@@ -902,15 +861,8 @@ function render() {
       </div>
     </div>` : '';
 
+  // Layout — no separate play-header; it's merged into nav above
   app.innerHTML = isLandscape && !revealed ? `
-    <div class="play-header">
-      <div>
-        <div class="play-title">${currentRoute.name}</div>
-        <div class="play-meta">${currentRoute.region} · ${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</div>
-      </div>
-      ${pipsHTML}
-    </div>
-
     <div class="play-landscape-row">
       <div class="play-col-map">
         <div class="map-panel landscape-map-panel" id="map-panel">
@@ -919,22 +871,13 @@ function render() {
       </div>
       <div class="play-col-photos">
         ${photoPanelHTML}
+        ${historyHTML}
       </div>
     </div>
-    ${historyHTML}
   ` : `
-    <div class="play-header">
-      <div>
-        <div class="play-title">${currentRoute.name}</div>
-        <div class="play-meta">${currentRoute.region} · ${currentRoute.stops.length} stops · ${currentRoute.decoys.length} decoys</div>
-      </div>
-      ${pipsHTML}
-    </div>
-
     <div class="map-panel" id="map-panel">
       ${mapToggleHTML}
     </div>
-
     ${photoPanelHTML}
     ${!revealed ? historyHTML : ''}
     ${resultsHTML}
@@ -958,7 +901,6 @@ function render() {
     if (!mapCollapsed && revealed)  { setTimeout(initLeafletMap, 50); }
   });
 
-  // Photo taps
   document.querySelectorAll(".tap-card").forEach(el => {
     const name = el.dataset.name;
     const card = cards.find(c => c.name === name);
@@ -969,7 +911,6 @@ function render() {
     });
   });
 
-  // Expand buttons
   document.querySelectorAll(".expand-btn").forEach(btn => {
     btn.addEventListener("click", e => {
       e.stopPropagation();
@@ -977,7 +918,6 @@ function render() {
     });
   });
 
-  // Map / animation
   if (!revealed) {
     if (geoT === 0 && !geoAnimating) {
       startGeoAnimation();
@@ -1012,7 +952,6 @@ function goBack() {
   else closeOverlay();
 }
 
-/* ─── Entry-screen button wiring ─── */
 document.getElementById('play-btn').addEventListener('click', function(e) {
   e.preventDefault();
   this.style.transform = 'scale(0.97)';
@@ -1029,5 +968,4 @@ const packCards = document.querySelectorAll('.pack-card');
 if (packCards[0]) packCards[0].addEventListener('click', function() { screen = 'core'; render(); openOverlay(); });
 if (packCards[1]) packCards[1].addEventListener('click', function() { screen = 'winter'; render(); openOverlay(); });
 
-/* ─── Boot ─── */
 render();
