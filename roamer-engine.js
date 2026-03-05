@@ -863,6 +863,7 @@ function render() {
 
   // Layout — no separate play-header; it's merged into nav above
   app.innerHTML = isLandscape && !revealed ? `
+    ${historyHTML}
     <div class="play-landscape-row">
       <div class="play-col-map">
         <div class="map-panel landscape-map-panel" id="map-panel">
@@ -871,15 +872,14 @@ function render() {
       </div>
       <div class="play-col-photos">
         ${photoPanelHTML}
-        ${historyHTML}
       </div>
     </div>
   ` : `
+    ${!revealed ? historyHTML : ''}
     <div class="map-panel" id="map-panel">
       ${mapToggleHTML}
     </div>
     ${photoPanelHTML}
-    ${!revealed ? historyHTML : ''}
     ${resultsHTML}
   `;
 
