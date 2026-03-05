@@ -243,24 +243,57 @@ function lerpProject(lat, lng, t, rotDeg, vp, W, H, cx, cy, R) {
 }
 
 function computePinPositions(stops, vp, W, H) {
-  const pts = stops.map(s => ({ ...flatProject(s.lat, s.lng, vp, W, H) }));
-  const MIN_DIST = 52;
-  for (let pass = 0; pass < 20; pass++) {
+  // True map positions (never move)
+  const truePts = stops.map(s => flatProject(s.lat, s.lng, vp, W, H));
+  // Displaced positions (start at true, get pushed outward)
+  const pts = truePts.map(p => ({ x: p.x, y: p.y }));
+
+  const PIN_R = Math.max(20, Math.min(26, W / 26));
+  const MIN_DIST = PIN_R * 2 + 8;
+  const MARGIN = PIN_R + 4;
+
+  // Centroid of all true positions — displacement radiates outward from here
+  const cx = truePts.reduce((s, p) => s + p.x, 0) / truePts.length;
+  const cy = truePts.reduce((s, p) => s + p.y, 0) / truePts.length;
+
+  // Iterative separation: push overlapping pins apart, biased outward from centroid
+  for (let pass = 0; pass < 30; pass++) {
+    let moved = false;
     for (let i = 0; i < pts.length; i++) {
       for (let j = i + 1; j < pts.length; j++) {
         const dx = pts[j].x - pts[i].x;
         const dy = pts[j].y - pts[i].y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < MIN_DIST && dist > 0.01) {
-          const push = (MIN_DIST - dist) / 2;
+          const push = (MIN_DIST - dist) / 2 + 1;
           const nx = dx / dist, ny = dy / dist;
-          pts[i].x -= nx * push; pts[i].y -= ny * push;
-          pts[j].x += nx * push; pts[j].y += ny * push;
+          // Pin farther from centroid gets pushed more
+          const di = Math.sqrt((pts[i].x - cx) ** 2 + (pts[i].y - cy) ** 2);
+          const dj = Math.sqrt((pts[j].x - cx) ** 2 + (pts[j].y - cy) ** 2);
+          const ratioI = di < dj ? 0.35 : 0.65;
+          const ratioJ = 1 - ratioI;
+          pts[i].x -= nx * push * ratioI;
+          pts[i].y -= ny * push * ratioI;
+          pts[j].x += nx * push * ratioJ;
+          pts[j].y += ny * push * ratioJ;
+          moved = true;
         }
       }
     }
+    // Clamp to canvas bounds with margin
+    for (const p of pts) {
+      p.x = Math.max(MARGIN, Math.min(W - MARGIN, p.x));
+      p.y = Math.max(MARGIN, Math.min(H - MARGIN, p.y));
+    }
+    if (!moved) break;
   }
-  return pts;
+
+  // Return both true and displaced positions
+  return pts.map((p, i) => ({
+    x: p.x, y: p.y,
+    trueX: truePts[i].x, trueY: truePts[i].y,
+    displaced: Math.sqrt((p.x - truePts[i].x) ** 2 + (p.y - truePts[i].y) ** 2) > 6,
+  }));
 }
 
 function drawGeoMap(t, rotDeg) {
@@ -383,6 +416,32 @@ function drawGeoMap(t, rotDeg) {
     });
 
     cachedPinPositions = computePinPositions(currentRoute.stops, vp, W, H);
+
+    // Draw leader lines and true-location dots (V2 color-separated)
+    cachedPinPositions.forEach((pin, i) => {
+      if (!pin.displaced) return;
+      // Leader line: warm neutral, thicker for visibility
+      ctx.beginPath();
+      ctx.moveTo(pin.trueX, pin.trueY);
+      ctx.lineTo(pin.x, pin.y);
+      ctx.strokeStyle = `rgba(200,190,175,${0.32 * rA})`;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([3, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    // True-location dots: cyan, small, on the route
+    cachedPinPositions.forEach((pin, i) => {
+      if (!pin.displaced) return;
+      ctx.beginPath();
+      ctx.arc(pin.trueX, pin.trueY, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(125,211,252,${0.7 * rA})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(125,211,252,${0.9 * rA})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
   }
 }
 
@@ -419,20 +478,24 @@ function renderPinOverlay() {
     const isStart = i === 0;
     const isEnd   = i === currentRoute.stops.length - 1;
 
+    // V2 color scheme: warm neutral default, cyan on interaction, green on lock
     let borderCol, bgCol, labelContent;
     if (locked) {
       borderCol = '#4ade80'; bgCol = 'rgba(22,101,52,0.85)';
       labelContent = `<span style="color:#4ade80;font-size:1rem;">✓</span>`;
     } else if (card) {
+      // Photo placed — cyan to show it's active/map-relevant
       borderCol = 'var(--cyan)'; bgCol = 'rgba(6,10,18,0.7)';
       labelContent = `<img src="${card.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;" />`;
     } else if (selectedCard) {
+      // Awaiting placement — cyan pulse to invite tap
       borderCol = 'rgba(125,211,252,0.8)'; bgCol = 'rgba(125,211,252,0.12)';
       labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.95rem;font-weight:500;color:var(--cyan);">${i + 1}</span>`;
     } else {
-      borderCol = isStart ? 'rgba(125,211,252,0.7)' : 'rgba(255,255,255,0.22)';
-      bgCol     = isStart ? 'rgba(125,211,252,0.09)' : 'rgba(255,255,255,0.04)';
-      labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.9rem;font-weight:500;color:${isStart ? 'var(--cyan)' : 'rgba(255,255,255,0.5)'};">${i + 1}</span>`;
+      // Default resting state — warm neutral (UI scaffolding, not geography)
+      borderCol = isStart ? 'rgba(200,190,175,0.6)' : 'rgba(200,190,175,0.35)';
+      bgCol     = 'rgba(22,20,18,0.85)';
+      labelContent = `<span style="font-family:'Playfair Display',serif;font-size:0.9rem;font-weight:500;color:${isStart ? 'rgba(200,190,175,0.85)' : 'rgba(200,190,175,0.55)'};">${i + 1}</span>`;
     }
 
     const pulseRing = (selectedCard && !card && !locked)
