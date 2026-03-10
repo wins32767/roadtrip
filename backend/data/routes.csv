@@ -1,0 +1,10 @@
+route_name,stop_order,location,lat,lng,photo_url,is_decoy
+Southwest Desert Loop,1,Las Vegas Nevada,36.164488,-115.128479,https://example.com/lv.jpg,false
+Southwest Desert Loop,2,Zion National Park,37.295906,-113.035584,https://example.com/zion.jpg,false
+Southwest Desert Loop,3,Arches National Park,38.744574,-109.57467,https://example.com/arches.jpg,false
+Southwest Desert Loop,4,Monument Valley,37.16664,-110.09559,https://example.com/monument.jpg,false
+Southwest Desert Loop,5,Horseshoe Bend,36.877049,-111.502171,https://example.com/horseshoe.jpg,false
+Southwest Desert Loop,6,Grand Canyon South Rim,36.130936,-112.12099,https://example.com/grandcanyon.jpg,false
+Southwest Desert Loop,0,Yellowstone National Park,44.427963,-110.588455,https://example.com/yellowstone.jpg,true
+Southwest Desert Loop,0,Sequoia National Park,36.486557,-118.565483,https://example.com/sequoia.jpg,true
+Southwest Desert Loop,0,Yosemite,37.748753,-119.587279,https://example.com/yosemite.jpg,true
