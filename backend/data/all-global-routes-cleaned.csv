@@ -16,7 +16,7 @@ Iberia to Morocco,2,Madrid
 Iberia to Morocco,3,Lisbon
 Iberia to Morocco,4,Marrakech
 Iberia to Morocco,5,Fez
-Iberia to Morocco,6,Sahara Dunes (Erg Chebbi)
+Iberia to Morocco,6,Merzouga Dunes
 Eastern Mediterranean Arc,1,Cairo
 Eastern Mediterranean Arc,2,Alexandria
 Eastern Mediterranean Arc,3,Jerusalem
@@ -54,22 +54,26 @@ West Coast USA Spike,4,"Yosemite National Park, USA"
 West Coast USA Spike,5,"Big Sur, USA"
 West Coast USA Spike,6,"Los Angeles, USA"
 Mexico to Cartagena Spike,1,"Mexico City, Mexico"
-Mexico to Cartagena Spike,2,"Canc\'fan, Mexico"
+Mexico to Cartagena Spike,2,"Cancun, Mexico"
 Mexico to Cartagena Spike,3,"Tikal, Guatemala"
-Mexico to Cartagena Spike,4,"La Fortuna (Arenal Volcano), Costa Rica"
+Mexico to Cartagena Spike,4,"La Fortuna, Costa Rica"
 Mexico to Cartagena Spike,5,"Panama City, Panama"
 Mexico to Cartagena Spike,6,"Cartagena, Colombia"
-Northern Andes Spike,1,"Bogot\'e1, Colombia"
+
+
+
+=================
+Northern Andes Spike,1,"Bogota, Colombia"
 Northern Andes Spike,2,"Quito, Ecuador"
 Northern Andes Spike,3,"Lima, Peru"
 Northern Andes Spike,4,"Machu Picchu, Peru"
-Northern Andes Spike,5,"Lake Titicaca, Peru/Bolivia"
+Northern Andes Spike,5,"Lake Titicaca, Peru"
 Northern Andes Spike,6,"Salar de Uyuni, Bolivia"
 Rio to Patagonia Spike,1,"Rio de Janeiro, Brazil"
-Rio to Patagonia Spike,2,"Iguazu Falls, Argentina/Brazil"
+Rio to Patagonia Spike,2,"Iguazu Falls, Brazil"
 Rio to Patagonia Spike,3,"Buenos Aires, Argentina"
 Rio to Patagonia Spike,4,"El Calafate, Argentina"
-Rio to Patagonia Spike,5,Patagonia (Chile/Argentina)
+Rio to Patagonia Spike,5,Patagonia, Argentina
 Rio to Patagonia Spike,6,"Ushuaia, Argentina"
 Midnight Sun to Red Square,1,"Oslo, Norway"
 Midnight Sun to Red Square,2,"Stockholm, Sweden"

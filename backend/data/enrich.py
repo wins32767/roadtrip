@@ -355,6 +355,13 @@ def run(
     output_rows: list[dict] = []
 
     for i, row in enumerate(input_rows, start=2):  # row 1 is the header
+        # A line of all '=' characters acts as a stop marker — everything
+        # below it is ignored.  Useful for preserving rate-limited runs:
+        # just append a row of === to the CSV to mark where to resume from.
+        if all(v.strip('=') == '' for v in row.values()):
+            print(f"  stop  [{i - 1}/{len(input_rows)}] sentinel line reached, stopping early")
+            break
+
         route_name = row.get("route_name", "").strip()
         location   = row.get("location",   "").strip()
         stop_order = row.get("stop_order", "").strip()
