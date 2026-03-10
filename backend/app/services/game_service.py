@@ -1,5 +1,8 @@
 import random
-from app.models.game import Route, RoutePublic, GuessRequest, GuessResponse, SlotFeedback
+from app.models.game import (
+    Route, RoutePublic, HiddenLocation,
+    GuessRequest, GuessResponse, SlotFeedback,
+)
 from app.services.route_store import get_route_by_id
 
 MAX_GUESSES = 3
@@ -8,12 +11,13 @@ MAX_GUESSES = 3
 def get_public_route(route: Route) -> RoutePublic:
     """
     Return only what the client needs to render the puzzle.
-    No stop order, no lat/lng.
+    No lat/lng, no order, no decoy flag.
     """
-    all_photos = (
-        [{"name": s.name, "photo": s.photo, "is_decoy": False} for s in route.stops]
-        + [{"name": d.name, "photo": d.photo, "is_decoy": True} for d in route.decoys]
-    )
+    all_photos: list[HiddenLocation] = [
+        HiddenLocation(name=s.name, photo=s.photo) for s in route.stops
+    ] + [
+        HiddenLocation(name=d.name, photo=d.photo) for d in route.decoys
+    ]
     random.shuffle(all_photos)
     return RoutePublic(id=route.id, name=route.name, photos=all_photos)
 
@@ -39,7 +43,7 @@ def validate_guess(request: GuessRequest, guess_number: int) -> GuessResponse:
             result = "green"
             correct_count += 1
         elif any(s.name == placed_name for s in route.stops):
-            result = "yellow"  # real stop, wrong position
+            result = "yellow"  # real location, wrong position
         else:
             result = "red"     # decoy
 

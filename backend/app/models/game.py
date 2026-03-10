@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 
 
 class Location(BaseModel):
@@ -21,11 +21,17 @@ class Route(BaseModel):
     decoys: List[Decoy]
 
 
+class HiddenLocation(BaseModel):
+    """A location as the client sees it — name and photo only, no coordinates or position."""
+    name: str
+    photo: str
+
+
 class RoutePublic(BaseModel):
-    """Route data safe to send to the client — no lat/lng, no stop order."""
+    """Route data safe to send to the client — no lat/lng, no order, no decoy flag."""
     id: str
     name: str
-    photos: List[dict]  # name + photo only, shuffled
+    photos: List[HiddenLocation]
 
 
 class GuessItem(BaseModel):
