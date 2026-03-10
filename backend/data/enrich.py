@@ -33,6 +33,22 @@ SCRIPT_DIR  = Path(__file__).resolve().parent
 DEFAULT_IN  = SCRIPT_DIR / "all-global-routes-cleaned.csv"
 DEFAULT_OUT = SCRIPT_DIR / "routes.enriched.csv"
 
+# Load a .env file by walking up from the script's directory.
+# This finds backend/.env when the script lives at backend/data/enrich.py,
+# regardless of the working directory the script is invoked from.
+# python-dotenv is optional — if not installed the script falls back to the
+# real environment.
+try:
+    from dotenv import load_dotenv
+    _dotenv_path = next(
+        (p / ".env" for p in [SCRIPT_DIR, *SCRIPT_DIR.parents] if (p / ".env").exists()),
+        None,
+    )
+    load_dotenv(dotenv_path=_dotenv_path)
+except ImportError:
+    pass
+
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
@@ -137,6 +153,19 @@ def _with_retry(fn, retries: int, backoff: float):
     for attempt in range(retries + 1):
         try:
             return fn()
+        except requests.HTTPError as exc:
+            # 4xx errors are not transient — retrying won't help.
+            # 401 means bad/missing key; 403 means rate-limited or forbidden;
+            # 404 means the endpoint is wrong. Raise immediately.
+            if exc.response is not None and 400 <= exc.response.status_code < 500:
+                raise
+            last_exc = exc
+            if attempt < retries:
+                print(
+                    f"    [retry {attempt + 1}/{retries}] transient error: {exc}",
+                    file=sys.stderr,
+                )
+                time.sleep(backoff)
         except requests.RequestException as exc:
             last_exc = exc
             if attempt < retries:
